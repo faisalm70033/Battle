@@ -1,0 +1,1256 @@
+import React, { Component } from 'react'
+import { Text, View, NativeModules, NativeEventEmitter, TouchableOpacity, 
+    ActivityIndicator, SafeAreaView, ScrollView,FlatList, TouchableHighlight, Platform, TextInput } from 'react-native'
+import Controller from '../utils/Controller'
+import { EventRegister } from 'react-native-event-listeners'
+import { NordicDFU, DFUEmitter } from "@domir/react-native-nordic-dfu";
+import StatusBar from '../utils/StatusBar'
+import * as Progress from 'react-native-progress';
+// import { Dialog } from 'react-native-simple-dialogs';
+import Dialog from "react-native-dialog";
+import {scale, verticalScale, moderateScale} from '../utils/scale';
+import DocumentPicker from 'react-native-document-picker'
+import Icon from 'react-native-vector-icons/Ionicons';
+var RNFS = require('react-native-fs');
+import storage from '@react-native-firebase/storage'
+import moment from 'moment'
+
+
+export default class brustMode extends Component {
+
+    dfuProgressListener = null;
+dfuStateListener = null;
+constructor(props)
+{
+    super(props);
+    this.state = {
+        isScanning: false,
+        isProcessCompleted: true,
+        devicesList: [],
+        peripherals: new Map(),
+        showConnectionDialog: false,
+        showAlert: false,
+        connectionStatus: 'Not Connected',
+        peripheral: null,
+        dfuState: "Not started",
+        progress: 0,
+        totalProgress:0,
+        deviceNameFilter:'',
+        firnwareVersionFilter: '',
+        // firnwareVersionFilter: '0.1',
+        // autoDFUStatus: 'Not Started',
+        autoDFUStatus:'Performing Dfu',
+        firmwarefilepath : '',
+        alertMessage:'',
+        alertTitle: 'Alert',
+        totalDevices:0,
+        currentDevice:0,
+        aborted: false,
+        logs: [],
+        outputFilePath: ''
+        }
+
+
+
+}
+
+
+toTitleCase(str) {
+    return str.replace(
+      /\w\S*/g,
+      function(txt) {
+        return txt.charAt(0).toUpperCase() + txt.substr(1).toLowerCase();
+      }
+    );
+  }
+  
+componentDidMount()
+{
+
+      this.dfuProgressListener = DFUEmitter.addListener("DFUProgress", ({ percent }) => {
+        console.log("DFU progress:", percent);
+        // if(percent != 0)
+        // {
+            var totalPerent = Math.round((((this.state.currentDevice -1 ) / this.state.totalDevices) * 100) + (1 / this.state.totalDevices) * percent)
+            // this.setState({ totalProgress: totalPerent });    
+        // }
+        this.setState({ progress: percent , totalProgress: totalPerent});
+      });
+      this.dfuStateListener = DFUEmitter.addListener("DFUStateChanged", async ({ state }) => {
+        console.log("DFU state:", state);
+        state = state.replace(/_/g, ' ');
+        state = this.toTitleCase(state)
+        state = state.replace('State ', '');
+        
+        if(state != 'Dfu Completed' && state != 'Dfu Failed')
+        {
+            if(state == "Dfu Process Starting")
+            {
+                var logData = state + ': ' + this.state.devicesList[this.state.currentDevice-1].id
+                if(!this.state.logs.map((item) =>{ return item.message}).includes(logData))
+                {
+                    // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: logData, type:'info'});
+                    await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , logData, 'info')
+                }
+            }
+            else{
+                
+            //  this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: state, type:'info'});
+            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , state, 'info')
+                
+            }
+
+            
+        }
+        this.setState({ dfuState: state });
+
+
+      });
+
+      
+    // Controller.instance.scanDevices();
+    this.devicesListener = EventRegister.addEventListener('scanDevicesEvent', async (peripheral) => {
+        console.log(peripheral)
+        if(this.state.deviceNameFilter == '' || this.state.deviceNameFilter.toUpperCase() == peripheral.name.toUpperCase())
+        {
+            var logData = "Found: " + peripheral.id
+            if(!this.state.logs.map((item) =>{ return item.message}).includes(logData))
+            {
+                // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: logData, type:'info'});
+                await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , logData, 'info')
+            }
+
+            this.state.peripherals.set(peripheral.id, peripheral);
+            this.setState({
+                devicesList: Array.from(this.state.peripherals.values())
+            })
+        }
+        // setList(Array.from(peripherals.values()));
+    })
+    this.statusListener = EventRegister.addEventListener('scanningStatus', async (status) => {
+        
+
+        if(status == true)
+        {
+            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: "Scanning Started", type:'info'});
+            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Scanning Started", 'info')
+            
+        }
+
+        // if(status == false)
+        // {
+        //     this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: "Scanning Stopped", type:'info'});
+        //     await this.autoDFU() 
+        // }
+        if(status == false && this.state.aborted == false && this.state.autoDFUStatus == 'Scanning')
+        {
+            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: "Scanning Stopped", type:'info'});
+            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Scanning Stopped", 'info')
+            await this.autoDFU()
+        }
+        else if(status == false && this.state.aborted == true)
+        {
+
+        }
+
+        // var filteredDevices = []
+        // if(status == false && (this.state.devicesList == null || this.state.devicesList.length == 0))
+        // {
+        //     this.setState({
+        //         isProcessCompleted: true
+        //     })
+        // }
+        // if(status == false && this.state.autoDFUStatus == 'Scanning')
+        // {
+        //     if(this.state.firnwareVersionFilter == '')
+        //     {
+        //         this.setState({
+        //             autoDFUStatus:'Starting Dfu',
+        //             totalDevices: this.state.devicesList.length,
+        //             currentDevice : 1
+        //         })
+        //     }
+        //     else{
+        //         this.setState({
+        //             autoDFUStatus:'Filtering',
+        //             totalDevices: this.state.devicesList.length,
+        //             currentDevice : 1
+        //         })
+
+        //         for(var a=0;a<this.state.totalDevices;a++)
+        //         {
+
+        //             var currentDevice = this.state.devicesList[a]
+        //             await Controller.getInstance().getDevicePackageVersion(currentDevice.id).then((FirmwareVerison) =>{
+                    
+        //                 console.log(FirmwareVerison)
+                        
+        //                 if(FirmwareVerison <(this.state.firnwareVersionFilter))
+        //                 {
+        //                     filteredDevices.push(currentDevice) 
+        //                 }
+
+                    
+        //             }).catch((err) =>{
+        //                 console.log(err)
+        //             })
+        //             this.setState({
+        //                 currentDevice : a+1
+        //             })
+        //             if(this.state.aborted)
+        //             {
+        //                 break;
+        //             }
+        //         }
+
+        //         this.setState({
+        //             devicesList : filteredDevices,
+        //             totalDevices: filteredDevices.length,
+        //             currentDevice : 1,
+        //             autoDFUStatus: 'Starting Dfu'
+        //         })
+        //     }
+        // }
+        this.setState({
+            isScanning: status
+        })
+
+
+    })
+    
+
+}
+sleep(ms) {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+
+
+  uploadLogFile = async () => {
+    // const { uri } = image;
+    var fileName = this.state.outputFilePath.split('/')
+    fileName = fileName[fileName.length-1]
+    const uploadUri = this.state.outputFilePath
+    // const uploadUri = Platform.OS === 'ios' ? uri.replace('file://', '') : uri;
+    // setUploading(true);
+    // setTransferred(0);
+    const task = storage()
+      .ref('Pkd_Ota_Logs/'+fileName)
+      .putFile(uploadUri);
+    // set progress state
+    task.on('state_changed', snapshot => {
+    //   setTransferred(
+    //     Math.round(snapshot.bytesTransferred / snapshot.totalBytes) * 10000
+    //   );
+    console.log(`${snapshot.bytesTransferred} transferred out of ${snapshot.totalBytes}`);
+
+    console.log("Upload Status: "+Math.round(snapshot.bytesTransferred / snapshot.totalBytes) * 10000)
+    });
+    try {
+      await task;
+    } catch (e) {
+      console.error(e);
+    }
+    // setUploading(false);
+    console.log(
+      'logFile uploaded!');
+    // setImage(null);
+  };
+  
+
+async performDfu(peripheral)
+{
+    console.log(console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState))
+    await NordicDFU.startDFU({
+        deviceAddress: peripheral.id,
+        deviceName: peripheral.name,
+        filePath: this.state.firmwarefilepath,
+        alternativeAdvertisingNameEnabled: Platform.OS == 'ios' ? false:null
+        })
+
+        .then(async (res) => {
+            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Success On Device: " + res.deviceAddress, type:'success'});
+            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Success On Device: " + res.deviceAddress, 'success')
+            console.log("Transfer done:", res)})
+        .catch(async(err) =>{
+            console.log(err)
+            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Failed On Device: " + this.state.devicesList[this.state.currentDevice-1].id, type:'error'});
+            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Failed On Device: " + this.state.devicesList[this.state.currentDevice-1].id + res.deviceAddress, 'error')
+            this.setState({
+                totalProgress: this.state.totalProgress + Math.round((1/this.state.totalDevices)* 100)
+            })
+        })
+}
+async autoDFU()
+{
+if(this.state.devicesList == null || this.state.devicesList.length == 0)
+{
+    await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , 'No "' +this.state.deviceNameFilter+'" devices found, process aborted', 'error')
+    this.uploadLogFile()
+    this.setState({
+        isProcessCompleted: true,
+        aborted: false,
+        devicesList: [],
+        totalDevices:0,
+        currentDevice:0,
+        peripherals: new Map(),
+        connectionStatus: 'Not Connected',
+        showAlert: true,
+        alertMessage: 'No Device Found, Abortig Dfu',
+        autoDFUStatus: 'Dfu Aborted',
+        showConnectionDialog: false,
+        firmwarefilepath:''
+    })
+}
+else{
+    if(this.state.autoDFUStatus == 'Scanning')
+    {
+        
+
+        if(this.state.firnwareVersionFilter == '')
+        {
+            this.setState({
+                autoDFUStatus:'Performing Dfu',
+                totalDevices: this.state.devicesList.length,
+                currentDevice : 1
+            })
+
+            for(var a=0;a<this.state.totalDevices;a++)
+            {
+                console.log("Current Device : " +a+1 )
+                this.setState({
+                    currentDevice : a+1,
+                    progress:0,
+                    dfuState:'Preparing'
+                })
+                await this.performDfu(this.state.devicesList[a])
+
+                if(this.state.aborted)
+                {
+                    break;
+                    
+                }
+                await this.sleep(200);
+            }
+
+            if(this.state.aborted)
+            {
+                await Controller.getInstance().disconnect(this.state.devicesList[this.state.currentDevice].id)
+                this.setState({
+                    isProcessCompleted: true,
+                    aborted: true,
+                    devicesList: [],
+                    totalDevices:0,
+                    currentDevice:0,
+                    peripherals: new Map(),
+                    connectionStatus: 'Not Connected',
+                    autoDFUStatus: 'Dfu Aborted',
+                    showConnectionDialog: false,
+                    firmwarefilepath:''
+                })
+                // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Aborted" , type:'error'});
+                await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Aborted", 'error')
+                await this.uploadLogFile()
+            }
+            else{
+                // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Process Completed", type:'success'});
+                await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Process Completed", 'success')
+                await this.uploadLogFile()
+                this.setState({
+                    aborted: false,
+                    showConnectionDialog:false,
+                    isProcessCompleted: true,
+                    devicesList: [],
+                    totalDevices:0,
+                    currentDevice:0,
+                    peripherals: new Map(),
+                    firmwarefilepath:'',
+                    autoDFUStatus: 'Process Completed',
+    
+                })
+            }
+
+        }
+
+
+        //filter and then perfom DFU
+        else{
+            this.setState({
+                autoDFUStatus:'Filtering',
+                totalDevices: this.state.devicesList.length,
+                currentDevice : 1
+            })
+            var filteredDevices = []
+
+            for(var a=0;a<this.state.totalDevices;a++)
+            {
+
+                this.setState({
+                    currentDevice : a+1
+                })
+
+                var currentDevice = this.state.devicesList[a]
+                await Controller.getInstance().getDevicePackageVersion(currentDevice.id).then(async(FirmwareVerison) =>{
+                
+                    console.log(FirmwareVerison)
+                    
+                    if(FirmwareVerison <(this.state.firnwareVersionFilter))
+                    {
+                        currentDevice.previousPackageVersion = FirmwareVerison
+                        filteredDevices.push(currentDevice) 
+                    }
+                    else{
+                        await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , 'Device: '+ currentDevice.id +' is already up to date. (Current package version : '+ FirmwareVerison +', Update version: '+this.state.firnwareVersionFilter+')', 'info')
+                        // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: 'Device: '+ currentDevice.id +' is already up to date. (Current package version : '+ FirmwareVerison +', Update version: '+this.state.firnwareVersionFilter+')', type:'info'});
+                    }
+
+                
+                }).catch(async (err) =>{
+                    await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , 'Failed to fetch current package version of device: : '+ currentDevice.id +', trying again', 'error')
+                    console.log(err)
+                    await Controller.getInstance().getDevicePackageVersion(currentDevice.id).then(async (FirmwareVerison) =>{
+                
+                        console.log(FirmwareVerison)
+                        
+                        if(FirmwareVerison <(this.state.firnwareVersionFilter))
+                        {
+                            currentDevice.previousPackageVersion = FirmwareVerison
+                            filteredDevices.push(currentDevice) 
+                        }
+                        else{
+                            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , 'Device: '+ currentDevice.id +' is already up to date. (Current package version : '+ FirmwareVerison +', Update version: '+this.state.firnwareVersionFilter+')', 'info')
+                            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: 'Device: '+ currentDevice.id +' is already updated. current package version : '+ FirmwareVerison, type:'info'});
+                        }
+    
+                    
+                    }).catch(async (err) =>{
+                        await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , 'Failed to fetch current package version of device: : '+ currentDevice.id +', skipping device', 'error')
+                        // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: 'Failed to fetch current package version of device: : '+ currentDevice.id +', skipping device', type:'error'});
+                        console.log(err)
+                    })
+
+                })
+
+                if(this.state.aborted)
+                {
+                    console.log('Exiting Loop')
+                    break;
+                }
+                await this.sleep(200);
+            }
+
+            if(this.state.aborted)
+            {
+                console.log("ABORTING PROCESS")
+                console.log(this.state.devicesList[this.state.currentDevice].id)
+                await Controller.getInstance().disconnect(this.state.devicesList[this.state.currentDevice].id)
+                this.setState({
+                    isProcessCompleted: true,
+                    aborted: true,
+                    devicesList: [],
+                    totalDevices:0,
+                    currentDevice:0,
+                    peripherals: new Map(),
+                    connectionStatus: 'Not Connected',
+                    autoDFUStatus: 'Dfu Aborted',
+                    showConnectionDialog: false,
+                    firmwarefilepath:''
+                })
+
+                await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Aborted", 'error')
+                await this.uploadLogFile()
+            }
+            
+            else
+            {
+
+                if(filteredDevices.length == 0)
+                {
+
+                    // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message: 'All devices already have updated version', type:'success'});
+                    await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "All devices already have updated version", 'success')
+                    await this.uploadLogFile()
+
+                    this.setState({
+                        totalDevices:0,
+                        currentDevice:0,
+                        isProcessCompleted: true,
+                        showAlert: true,
+                        alertMessage: 'All devices already have updated version',
+                        autoDFUStatus: 'Process Completed',
+                        firmwarefilepath: "",
+                        devicesList:[],
+                        peripherals: new Map(),
+                        showConnectionDialog: false,
+                    })
+                }
+                else{
+                    this.setState({
+                        devicesList : filteredDevices,
+                        totalDevices: filteredDevices.length,
+                        currentDevice : 1,
+                        autoDFUStatus: 'Performing Dfu'
+                    })
+        
+                    for(var a=0;a<this.state.totalDevices;a++)
+                    {
+                        console.log("Current Device : " +a+1 )
+                        this.setState({
+                            currentDevice : a+1,
+                            progress:0,
+                            dfuState:'Preparing'
+                        })
+                        await this.performDfu(this.state.devicesList[a])
+        
+                        if(this.state.aborted)
+                        {
+                            break;
+                            
+                        }
+                        await this.sleep(200);
+                    }
+        
+                    if(this.state.aborted)
+                    {
+                        await Controller.getInstance().disconnect(this.state.devicesList[this.state.currentDevice].id)
+                        this.setState({
+                            isProcessCompleted: true,
+                            aborted: true,
+                            devicesList: [],
+                            totalDevices:0,
+                            currentDevice:0,
+                            peripherals: new Map(),
+                            connectionStatus: 'Not Connected',
+                            autoDFUStatus: 'Dfu Aborted',
+                            showConnectionDialog: false,
+                            firmwarefilepath:''
+                        })
+                        // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Aborted" , type:'error'});
+                        await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Aborted", 'error')
+                        await this.uploadLogFile()
+                    }
+                    else{
+                        // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Process Completed", type:'success'});
+                        await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Process Completed", 'success')
+                        await this.uploadLogFile()
+                        this.setState({
+                            aborted: false,
+                            showConnectionDialog:false,
+                            isProcessCompleted: true,
+                            devicesList: [],
+                            totalDevices:0,
+                            currentDevice:0,
+                            peripherals: new Map(),
+                            firmwarefilepath:'',
+                            autoDFUStatus: 'Process Completed',
+            
+                        })
+                    }
+                }
+
+            }
+
+
+            console.log(filteredDevices)
+        }
+    }
+
+}
+
+}
+
+
+writeLog(time, log, type)
+{
+    var thisClass = this;
+    return new Promise(async function(resolve, reject)
+    {
+  
+        
+        if(thisClass.state.outputFilePath != "")
+        {
+            thisClass.state.logs.push({time: time , message:log, type:type});
+
+            if(await RNFS.exists(thisClass.state.outputFilePath))
+            {
+                console.log('File Existed')
+                await RNFS.readFile(thisClass.state.outputFilePath, 'utf8').then(async (data) =>{
+                    console.log(data)
+                    
+                    var appendData = data+'\n'+time +" "+ log
+                    await RNFS.writeFile(thisClass.state.outputFilePath,appendData, 'utf8')
+                    .then((success) => {
+                        resolve('success')
+                        console.log('FILE WRITTEN!');
+                    })
+                    .catch((err) => {
+                        reject(err)
+                        console.log(err.message);
+                    });
+    
+                    
+                }).catch((err) =>{
+                    console.log(err)
+                })
+            }
+            else{
+                console.log('File Created')
+
+                await RNFS.writeFile(thisClass.state.outputFilePath, time +" "+ log, 'utf8')
+                    .then((success) => {
+                        resolve('success')
+                        console.log('FILE WRITTEN!');
+                    })
+                    .catch((err) => {
+                        reject(err)
+                        console.log(err.message);
+                    });
+            }
+
+
+        }
+        else
+        {
+            var currentDirectory = 'Pkd_Ota_Logs'
+            let absolutePath = ""
+            if(Platform.OS == "android")
+            {
+                console.log("ANDORID")
+                absolutePath = `/storage/emulated/0/${currentDirectory}`
+            } 
+            else{
+                console.log("IOS")
+                console.log(RNFS.ExternalDirectoryPath)
+                absolutePath = `/${currentDirectory}`
+            }
+            
+            if(await RNFS.exists(absolutePath))
+            {
+             console.log('Folder already exists')
+                }
+            else{
+                console.log('Creating folder')
+                RNFS.mkdir(absolutePath);
+
+            }
+
+            var outputFilePath = absolutePath+'/pkd_ota_Log_'+moment().format('DD_MM_YYYY_hh_mm_ss_A')+'.txt'
+            thisClass.setState({outputFilePath: outputFilePath})
+            await thisClass.writeLog(time, log)
+        }
+    })
+
+}
+
+
+
+componentWillUnmount() {
+    EventRegister.removeEventListener(this.devicesListener)
+    EventRegister.removeEventListener(this.statusListener)
+    this.dfuProgressListener.remove();
+    this.dfuStateListener.remove();
+}
+
+
+    render() {
+
+        const renderItem = (item) => {
+            
+                const colors = item.type == 'info' ? {timeColor:'#4d4d4d', messageColor: '#000000'} : (item.type == 'error' ? {timeColor: '#dd5c63', messageColor: '#ce1620'} : {timeColor: '#5eaa4f', messageColor: '#8ec484'});
+                return (
+                    <View style={{marginVertical:verticalScale(1), flexDirection:'row' ,marginHorizontal:scale(1)}}>
+                    <Text style={{fontSize: Platform.OS == "ios" ? scale(13):scale(10.2), color: colors.timeColor, width:'45%', textAlign:'left'}}>{item.time}</Text>
+                      <Text style={{fontSize: Platform.OS == "ios" ? scale(13):scale(10.2), color: colors.messageColor, width:'55%', fontWeight:'bold'}}>{item.message}</Text>
+                    </View>
+
+                );
+        
+              }
+
+
+        return (
+            <View style={{flex:1}}>
+                 <StatusBar backgroundColor="#013C4E" barStyle="light-content" />
+
+                 <View style={{backgroundColor:'#00a9cd'}}>
+                
+                <TouchableOpacity
+                        onPress={() => {
+                        this.props.navigation.goBack();
+                        }}
+                        style={{top: scale(5), left: scale(5)}}>
+                        <Icon name="chevron-back-outline" size={scale(30)} color="#5e5e5e" />
+                    </TouchableOpacity>
+    
+    
+                <View style={{flexDirection:'row', height:scale(35) ,alignItems:'center', paddingStart:scale(10), marginVertical:scale(10),marginHorizontal:'5%',borderRadius:scale(5), backgroundColor:'white'}}>
+                    <Text style= {{fontWeight:'bold', color:'#00a9cd'}}>Device Name: </Text>
+                    <TextInput style={{borderColor:'black', borderWidth:scale(0), flex:1, height:'100%',color:'#00a9cd'}}
+                    // editable ={this.state.isScanning ? false:true}
+                    onChangeText ={((text) =>{
+    
+                        this.setState({deviceNameFilter:text})
+                        })}
+                    ></TextInput>
+    
+                    </View>
+    
+                    <View style={{flexDirection:'row', height:scale(35), alignItems:'center', paddingStart:scale(10), marginBottom:scale(10),marginHorizontal:'5%',borderRadius:scale(5), backgroundColor:'white'}}>
+                    <Text style= {{fontWeight:'bold', color:'#00a9cd'}}>Firmware Version: </Text>
+                    <TextInput keyboardType="numbers-and-punctuation" style={{borderColor:'black', borderWidth:scale(0),color:'#00a9cd',flex:1, height:'100%'}}
+                    // editable ={this.state.isScanning ? false:true}
+                    onChangeText ={((text) =>{this.setState({firnwareVersionFilter:text})})}
+                    ></TextInput>
+                    </View>
+    
+                    <View style={{width:'100%',marginBottom:verticalScale(10), height:verticalScale(40)}}>
+                    
+                    
+                    {this.state.firmwarefilepath == "" ? (
+                        <TouchableOpacity style={{backgroundColor:'#99ddeb',alignSelf:'center',justifyContent:'center', alignItems:'center', marginTop:'auto',paddingHorizontal:'5%',paddingVertical:verticalScale(5),borderRadius:scale(5), marginBottom:'auto', marginRight:'auto', marginLeft:'auto'}}
+                    onPress={(async () =>{
+
+                        // var outputFilePath = RNFS.ExternalDirectoryPath+'/pkd_ota_Log_'+moment().format('DD_MM_YYYY_hh_mm_ss_A')+'.txt'
+                        // console.log(outputFilePath)
+                        var currentDirectory = 'Pkd_Ota_Logs'
+                        let absolutePath = ""
+                        if(Platform.OS == "android")
+                        {
+                            console.log("ANDORID")
+                            absolutePath = `/storage/emulated/0/${currentDirectory}`
+                        } 
+                        else{
+                            console.log("IOS")
+                            console.log(await RNFS.DownloadDirectoryPath)
+                            absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`
+                            console.log(absolutePath)
+                        }
+                        if(await RNFS.exists(absolutePath))
+                        {
+                         console.log('Folder already exists')
+                            }
+                        else{
+                            console.log('Creating folder')
+                            RNFS.mkdir(absolutePath);
+
+                        }
+
+                        var outputFilePath = absolutePath+'/pkd_ota_Log_'+moment().format('DD_MM_YYYY_hh_mm_ss_A')+'.txt'
+
+                        
+  
+                        // outputFilePath
+
+                            if(this.state.deviceNameFilter == '')
+                            {
+                                this.setState({
+                                isProcessCompleted: true,
+                                devicesList: [],
+                                peripherals: new Map(),
+                                progress:0,
+                                totalProgress:0,
+                                connectionStatus: 'Not Connected',
+                                autoDFUStatus: 'Not Started',
+                                showConnectionDialog: false,
+                                showAlert: true,
+                                alertMessage: 'Please enter device name',
+                                outputFilePath: outputFilePath
+                            })
+                            }
+                            else{
+                                
+                                this.setState({
+                                isProcessCompleted: true,
+                                aborted: false,
+                                progress:0,
+                                totalProgress:0,
+                                devicesList: [],
+                                logs: [],
+                                peripherals: new Map(),
+                                connectionStatus: 'Not Connected',
+                                autoDFUStatus: 'Scanning for devices',
+                                showConnectionDialog: true,
+                                outputFilePath: outputFilePath
+                            })
+                            }
+
+
+
+                      
+
+
+
+                    })}>
+                    
+                        <Text style={{fontWeight:'bold', color:'white'}}>START DFU</Text>
+                        
+                    </TouchableOpacity>
+                    ):(null)}
+                   
+
+                    {!this.state.isProcessCompleted ? (<ActivityIndicator color={'#0586DD'} size={'large'} style={{top:0,bottom:0,right:'5%', position:'absolute'}}></ActivityIndicator>):(null)}
+                    </View>
+                 </View>
+
+
+                <FlatList
+                style = {{marginVertical:verticalScale(5)}}
+                        data={this.state.logs}
+                        renderItem={({ item }) => renderItem(item) }
+                        keyExtractor={item => item.id}
+                        />  
+
+{/* <View style = {{backgroundColor:'white', flex: 1}}>
+
+<View style={{marginVertical:verticalScale(3), flexDirection:'row' ,marginHorizontal:scale(3)}}>
+                    <Text style={{fontSize: Platform.OS == "ios" ? scale(13):scale(10.2), color: '#dd5c63', width:'42%', textAlign:'left'}}>{'11/09/2021 00:17:26.582'}</Text>
+                      <Text style={{fontSize: Platform.OS == "ios" ? scale(13):scale(10.2), color: '#ce1620', width:'53%', fontWeight:'bold'}}>{'Connected dn jdbf djfdj jdbf djsfsdjfdjb ihhhj jhjhjk'}</Text>
+                    </View>
+</View> */}
+
+
+                 {/* <Dialog
+                dialogStyle= {{justifyContent:'center', alignContent:'center', alignItems:'center', borderRadius:10}}
+                contentStyle = {{ borderRadius:10}} 
+                visible={this.state.showConnectionDialog}
+                title=""
+                
+                // onTouchOutside={() => this.setState({showConnectionDialog: false})} 
+                >
+            
+                               <View style={{alignItems:'center', justifyContent:'center'}}>
+                {this.state.firmwarefilepath == '' ? (
+                    <View style={{}}>
+                    <TouchableOpacity
+                    onPress={() => {
+                    this.setState({showConnectionDialog: false})
+                    }}
+                    style={{position: 'relative', marginTop:'auto', marginLeft:'auto'}}>
+                    <Icon name="close" size={scale(25)} color="#5e5e5e" />
+                </TouchableOpacity>
+                
+                <View style={{justifyContent:"center", alignItems:'center', alignSelf:'center', marginTop:'auto', marginBottom:'auto'}}>
+
+                <Text style={{fontSize:scale(15), marginBottom:scale(10)}}>Please Select Firmware File</Text>
+
+<TouchableOpacity style={{backgroundColor:'#00a9cd', padding:scale(5), marginTop:scale(10), borderRadius:scale(5)}}
+        onPress ={(async () =>{
+            if(this.state.firmwarefilepath == ''  && this.state.dfuState != 'Dfu Failed')
+            {
+                try{
+                    var destination = null;
+
+                    if(Platform.OS == "android")
+                    {
+                        const packageFile = await DocumentPicker.pick({
+                        type: [DocumentPicker.types.zip],
+                    })
+
+                    console.log(packageFile[0])
+
+                    destination = RNFS.CachesDirectoryPath + "/" + packageFile[0].name;
+                    await RNFS.copyFile(packageFile[0].uri, destination);
+                    }
+                    
+                    else if(Platform.OS == "ios")
+                    {
+                        const packageFile = await DocumentPicker.pick({
+                        type: ["public.archive"],
+                    })
+                    destination = packageFile[0].uri
+                    }
+                    Controller.getInstance().scanDevices();
+
+                    this.setState({firmwarefilepath: destination, dfuState:'Please Wait', autoDFUStatus:'Scanning'})
+
+               
+                }
+                catch (err) {
+                if (DocumentPicker.isCancel(err)) {
+                } else {
+                }
+                }
+
+            }
+            
+        })}
+        >
+    <Text style = {{color:'white'}}>
+        Select package file
+    </Text>
+    </TouchableOpacity>
+
+                </View>
+
+
+</View>
+                ):(
+                    //dfu dialog
+
+                    <View style = {{justifyContent:'center', alignItems:'center', width:'100%', height:'100%'}}>
+                 {this.state.autoDFUStatus === 'Scanning' ? (
+                     <View style = {{justifyContent:'center', alignItems:'center'}}>
+                         <Text style = {{fontSize:scale(15)}}>Scanning for devices</Text>
+                         <Text style = {{fontSize:scale(15)}}>{'Devices Found: ' + this.state.devicesList.length}</Text>
+                     </View>
+                 ):(null)}
+
+                 {this.state.autoDFUStatus === 'Filtering' ? (
+                     
+                    <View style = {{justifyContent:'center', alignItems:'center'}}>
+                         <Text style = {{fontSize:scale(15)}}>Filtering Device</Text>
+                         <Text style = {{fontSize:scale(15)}}>{'Filteing Device: ' +this.state.currentDevice+'/'+this.state.totalDevices}</Text>
+                     </View>
+                     
+                     ):(null)}
+
+
+
+                     {this.state.autoDFUStatus === 'Performing Dfu' ? (
+                     
+                     <View style = {{justifyContent:'center', alignItems:'center', width:'100%', height:'100%'}}>
+                     <View style={{position:'absolute', top:scale(15),right:scale(15)}}>
+                     <Text style = {{fontSize:scale(15)}}>{'Device: '  + this.state.currentDevice+ '/' + this.state.totalDevices}</Text>
+                     </View>
+                         
+                         <View style={{flexDirection:'row', width:'100%', justifyContent:'center', alignContent:'center', alignItems:'center'}}>
+
+                     <Text style={{fontSize:scale(15)}}>{'DFU State: '}</Text>
+                    <Text style={{fontSize:scale(15)}}>{this.state.dfuState}</Text>
+                    </View>
+
+
+
+                    <View style={{flexDirection:'row', justifyContent:'center', alignItems:'center', width:'100%',paddingHorizontal:'3%' ,marginTop: verticalScale(5)}}>
+                    <View style={{width:'50%', justifyContent:'center', alignItems:'center'}}>
+                    <Text style={{fontSize:scale(15)}}>Dfu Progress: </Text>
+                    </View>
+                    <View style={{justifyContent:'center', width:'50%', alignItems:'center', alignContent:'center'}}>
+                        <Text style={{fontSize:scale(12),color:'#007690', fontWeight:'bold', alignSelf:'center', position:'absolute', elevation:99, zIndex:99, top:0, bottom:0}}>{this.state.progress + '%'}</Text>
+                        <Progress.Bar progress={this.state.progress/100} height={verticalScale(20)} width ={scale(100)} color = {'#80d4e6'}  style={{ borderColor:'#80d4e6', justifyContent:'center'}} />
+                    </View>
+                    </View>
+
+                    <View style={{flexDirection:'row', justifyContent:'center', alignItems:'center', width:'100%',paddingHorizontal:'3%' ,marginTop: verticalScale(5)}}>
+                    <View style={{width:'50%', justifyContent:'center', alignItems:'center'}}>
+                    <Text style={{fontSize:scale(15)}}>Total Progress: </Text>
+                    </View>
+                    <View style={{justifyContent:'center', width:'50%', alignItems:'center', alignContent:'center'}}>
+                        <Text style={{fontSize:scale(12),color:'#007690', fontWeight:'bold', alignSelf:'center', position:'absolute', elevation:99, zIndex:99, top:0, bottom:0}}>{this.state.totalProgress + '%'}</Text>
+                        <Progress.Bar progress={this.state.totalProgress/100} height={verticalScale(20)}  width ={scale(100)} color = {'#80d4e6'} style={{ borderColor:'#80d4e6', justifyContent:'center'}} />
+                    </View>
+                    </View>
+                    
+                    
+                      </View>
+                      
+                      ):(null)}
+
+                      <TouchableOpacity style={{backgroundColor:'#00a9cd',alignSelf:'baseline',justifyContent:'center', alignItems:'center', marginTop:'auto' ,paddingHorizontal:'5%',paddingVertical:verticalScale(5),borderRadius:scale(5), marginRight:'auto', marginLeft:'auto'}}
+                    onPress={(() =>{
+                          
+                            Controller.getInstance().stopScan();
+                            this.setState({
+                                isProcessCompleted: true,
+                                aborted: true,
+                                devicesList: [],
+                                totalDevices:0,
+                                currentDevice:0,
+                                peripherals: new Map(),
+                                connectionStatus: 'Not Connected',
+                                autoDFUStatus: 'Dfu Aborted',
+                                showConnectionDialog: false,
+                                firmwarefilepath:''
+                            })
+                    })}>
+                    
+                        <Text style={{fontWeight:'bold', color:'white'}}>Abort DFU</Text>
+                        
+                    </TouchableOpacity>
+
+
+
+
+                 </View>
+
+                )}
+
+           
+
+
+                </View>
+
+                </Dialog>
+
+
+                <Dialog
+                dialogStyle= {{height:'25%', borderRadius:10}}
+                visible={this.state.showAlert}
+                title=""
+                // onTouchOutside={() => this.setState({showConnectionDialog: false})} 
+                >
+                
+                <View style={{height:'100%', width:'100%', alignItems:'center', justifyContent:'center'}}>
+
+                <Text style={{fontSize:scale(20), fontWeight:'bold' ,marginBottom:scale(10)}}>Error</Text>
+                    <Text style={{fontSize:scale(20), marginBottom:scale(10)}}>{this.state.alertMessage}</Text>
+
+                        <TouchableOpacity style={{backgroundColor:'#00a9cd', padding:scale(5), marginTop:scale(10), borderRadius:scale(5)}}
+                        onPress ={(async () =>{
+       
+                                this.setState({showAlert: false})
+                        })}
+                        >
+                    <Text style = {{color:'white'}}>
+                       Close
+                    </Text>
+                    </TouchableOpacity>
+
+                </View>
+                </Dialog> */}
+
+
+
+{this.state.showConnectionDialog ? (
+
+    <Dialog.Container
+          contentStyle={{
+            borderRadius: 10,
+            justifyContent: 'center',
+            alignItems: 'center',
+            backgroundColor:'white'
+          }}
+          headerStyle={{justifyContent: 'center', alignItems: 'center'}}
+          footerStyle={{justifyContent: 'center', alignItems: 'center'}}
+          visible={true}>
+          {this.state.firmwarefilepath == "" ? (
+            <TouchableOpacity
+            onPress={() => {
+              this.setState({
+                  showConnectionDialog:false
+              })
+            }}
+            style={{position: 'absolute', top: scale(5), right: scale(5)}}>
+            <Icon name="close" size={scale(25)} color="#5e5e5e" />
+          </TouchableOpacity>
+          ):(null)}
+
+          <Dialog.Title style={{fontSize: scale(20), fontWeight: 'bold', color:'#00a9cd'}}>
+            Brust DFU
+          </Dialog.Title>
+
+          {/* <Dialog.Description><Text>Device is already configured, would you like to unlink?</Text></Dialog.Description> */}
+          
+          {this.state.firmwarefilepath == "" ? (
+            <View style={{}}>
+
+                <View style={{justifyContent:"center", alignItems:'center', alignSelf:'center', marginTop:'auto', marginBottom:'auto'}}>
+
+                <Text style={{fontSize:scale(15), marginBottom:scale(10)}}>Please Select Firmware File</Text>
+
+<TouchableOpacity style={{backgroundColor:'#00a9cd', padding:scale(5), marginTop:scale(10), borderRadius:scale(5), marginBottom:Platform.OS == 'ios' ? (verticalScale(10)):(null)}}
+        onPress ={(async () =>{
+            if(this.state.firmwarefilepath == '')
+            {
+                try{
+                    var destination = null;
+
+                    if(Platform.OS == "android")
+                    {
+                        const packageFile = await DocumentPicker.pick({
+                        type: [DocumentPicker.types.zip],
+                    })
+
+                    console.log(packageFile[0])
+
+                    destination = RNFS.CachesDirectoryPath + "/" + packageFile[0].name;
+                    await RNFS.copyFile(packageFile[0].uri, destination);
+                    }
+                    
+                    else if(Platform.OS == "ios")
+                    {
+                        const packageFile = await DocumentPicker.pick({
+                        type: ["public.archive"],
+                    })
+                    destination = packageFile[0].uri
+                    }
+                    Controller.getInstance().scanDevices();
+
+                    this.setState({firmwarefilepath: destination, dfuState:'Not Started', autoDFUStatus:'Scanning', isProcessCompleted:false})
+
+               
+                }
+                catch (err) {
+                if (DocumentPicker.isCancel(err)) {
+                } else {
+                }
+                }
+
+            }
+            
+        })}
+        >
+    <Text style = {{color:'white'}}>
+        Select package file
+    </Text>
+    </TouchableOpacity>
+
+                </View>
+
+
+</View>
+          ):(    <View style = {{justifyContent:'center', alignItems:'center'}}>
+                 {this.state.autoDFUStatus === 'Scanning' ? (
+                     <View style = {{justifyContent:'center', alignItems:'center'}}>
+                         <Text style = {{fontSize:scale(15)}}>Scanning for devices</Text>
+                         <Text style = {{fontSize:scale(15)}}>{'Devices Found: ' + this.state.devicesList.length}</Text>
+                     </View>
+                 ):(null)}
+
+                 {this.state.autoDFUStatus === 'Filtering' ? (
+                     
+                    <View style = {{justifyContent:'center', alignItems:'center'}}>
+                         <Text style = {{fontSize:scale(15)}}>Filtering Device</Text>
+                         <Text style = {{fontSize:scale(15)}}>{'Filteing Device: ' +this.state.currentDevice+'/'+this.state.totalDevices}</Text>
+                     </View>
+                     
+                     ):(null)}
+
+
+
+                     {this.state.autoDFUStatus === 'Performing Dfu' ? (
+                     
+                     <View style = {{justifyContent:'center', alignItems:'center'}}>
+                     <View style={{marginLeft:'auto', marginBottom:'auto', marginRight:Platform.OS == 'ios' ? (scale(10)):(null)}}>
+                     <Text style = {{fontSize:scale(15)}}>{'Device: '  + this.state.currentDevice+ '/' + this.state.totalDevices}</Text>
+                     </View>
+                         
+                         <View style={{flexDirection:'row',justifyContent:'center', alignContent:'center', alignItems:'center', alignSelf:'center'}}>
+
+                     <Text style={{fontSize:scale(15)}}>{'DFU State: '}</Text>
+                    <Text style={{fontSize:scale(15)}}>{this.state.dfuState}</Text>
+                    </View>
+
+
+
+                    <View style={{flexDirection:'row', justifyContent:'center', alignItems:'center', width:'100%',paddingHorizontal:'3%' ,marginTop: verticalScale(5)}}>
+                    <View style={{width:'50%', justifyContent:'center', alignItems:'center'}}>
+                    <Text style={{fontSize:scale(15)}}>Dfu Progress: </Text>
+                    </View>
+                    <View style={{justifyContent:'center', width:'50%', alignItems:'center', alignContent:'center'}}>
+                        <Text style={{fontSize:scale(12),color:'#007690', fontWeight:'bold', alignSelf:'center', position:'absolute', elevation:99, zIndex:99, top:0, bottom:0}}>{this.state.progress + '%'}</Text>
+                        <Progress.Bar progress={this.state.progress/100} height={verticalScale(20)} width ={scale(100)} color = {'#80d4e6'}  style={{ borderColor:'#80d4e6', justifyContent:'center'}} />
+                    </View>
+                    </View>
+
+                    <View style={{flexDirection:'row', justifyContent:'center', alignItems:'center', width:'100%',paddingHorizontal:'3%' ,marginTop: verticalScale(5)}}>
+                    <View style={{width:'50%', justifyContent:'center', alignItems:'center'}}>
+                    <Text style={{fontSize:scale(15)}}>Total Progress: </Text>
+                    </View>
+                    <View style={{justifyContent:'center', width:'50%', alignItems:'center', alignContent:'center'}}>
+                        <Text style={{fontSize:scale(12),color:'#007690', fontWeight:'bold', alignSelf:'center', position:'absolute', elevation:99, zIndex:99, top:0, bottom:0}}>{this.state.totalProgress + '%'}</Text>
+                        <Progress.Bar progress={this.state.totalProgress/100} height={verticalScale(20)}  width ={scale(100)} color = {'#80d4e6'} style={{ borderColor:'#80d4e6', justifyContent:'center'}} />
+                    </View>
+                    </View>
+                    
+                    
+                      </View>
+                      
+                      ):(null)}
+
+                      {!this.state.aborted ? (
+                        <TouchableOpacity style={{backgroundColor:'#00a9cd',alignSelf:'baseline',justifyContent:'center', alignItems:'center', marginTop:verticalScale(20) ,paddingHorizontal:'5%',paddingVertical:verticalScale(5),borderRadius:scale(5), marginRight:'auto', marginLeft:'auto', marginBottom:Platform.OS == 'ios' ? (verticalScale(10)):(null)}}
+                    onPress={( async () =>{
+                          
+                            Controller.getInstance().stopScan();
+                            console.log("DFU STATE: " + this.state.dfuState)
+                            if((this.state.dfuState == 'Not Started' || this.state.dfuState == 'Dfu Completed' || this.state.dfuState == 'Dfu Failed') && this.state.autoDFUStatus != 'Filtering')
+                            {
+
+                                console.log('ABORTING PROCESS')
+                            // this.state.logs.push({time: moment().format('DD/MM/YYYY HH:mm:ss.SSS') , message:"Dfu Aborted" , type:'error'});
+                            await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "Dfu Aborted", 'error')
+                            await this.uploadLogFile()
+                            
+                            this.setState({
+                                isProcessCompleted: true,
+                                aborted: true,
+                                devicesList: [],
+                                totalDevices:0,
+                                currentDevice:0,
+                                peripherals: new Map(),
+                                connectionStatus: 'Not Connected',
+                                autoDFUStatus: 'Dfu Aborted',
+                                showConnectionDialog: false,
+                                firmwarefilepath:''
+                            })
+                        }
+                        else{
+                            console.log('WAITING TO ABORT PROCESS')
+                             this.setState({
+                                 aborted:true
+                             })
+                        }
+                    })}>
+                    
+                        <Text style={{fontWeight:'bold', color:'white'}}>Abort DFU</Text>
+                        
+                    </TouchableOpacity>
+                      )
+                      :
+                      (
+                          <View style={{justifyContent:'center', alignItems:'center', flexDirection:'column', marginTop:verticalScale(10)}}>
+                          <Text style={{fontSize:scale(15)}}>Please Wait, aborting</Text>
+                              <ActivityIndicator size={'large'}></ActivityIndicator>
+                              
+                          </View>
+                      )
+                      }
+
+
+
+
+                 </View>)}
+          <View style={{flexDirection: 'column'}}>
+
+          </View>
+        </Dialog.Container>
+):(null)}
+
+
+
+{this.state.showAlert ? (
+                  <Dialog.Container
+                    contentStyle={{
+                        backgroundColor:'white',
+                      borderRadius: 10,
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    headerStyle={{
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    footerStyle={{
+                      justifyContent: 'center',
+                      alignItems: 'center',
+                    }}
+                    visible={true}>
+                    <Dialog.Title style ={{color:'black'}}>Error</Dialog.Title>
+                    <Dialog.Description style ={{color:'black'}}>
+                      {this.state.alertMessage}
+                    </Dialog.Description>
+                    <Dialog.Button
+                      label="OK"
+                      onPress={() => {
+                        this.setState({showAlert: false});
+                        
+                      }}
+                    />
+                  </Dialog.Container>
+                ) : null}
+
+
+            </View>
+        )
+    }
+}

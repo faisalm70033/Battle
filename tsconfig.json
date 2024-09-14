@@ -1,0 +1,8 @@
+{
+  "extends": "@react-native/typescript-config/tsconfig.json",
+  "include": [
+    "App.tsx",
+   
+    "src/**/*" // Adjust this to match your source folder structure
+  ],
+}

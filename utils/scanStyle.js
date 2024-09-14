@@ -1,0 +1,217 @@
+import React, { Component } from "react";
+import { moderateScale, scale, verticalScale } from "./scale";
+
+import { Dimensions } from "react-native";
+
+const deviceWidth = Dimensions.get("screen").width;
+const deviceHeight = Dimensions.get("screen").height;
+const styles = {
+  scrollViewStyle: {
+    flex: 1,
+    justifyContent: "center",
+    // backgroundColor: '#99003d',
+  },
+  textTitle: {
+    // //fontFamily: 'roboto-500',
+    fontWeight: "bold",
+    fontSize: scale(18),
+    textAlign: "center",
+    padding: scale(16),
+    color: "white",
+  },
+  textTitle1: {
+    // //fontFamily: 'roboto-500',
+    fontWeight: "bold",
+    fontSize: scale(18),
+    textAlign: "center",
+    padding: scale(16),
+    color: "white",
+  },
+  cardView: {
+    width: deviceWidth - 32,
+    height: scale(250),
+    alignSelf: "center",
+    justifyContent: "flex-start",
+    alignItems: "center",
+    borderWidth: scale(1),
+    borderRadius: scale(2),
+    borderColor: "#ddd",
+    borderBottomWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: scale(0.8),
+    shadowRadius: scale(2),
+    elevation: scale(4),
+    marginLeft: scale(5),
+    marginRight: scale(5),
+    marginTop: scale(10),
+    backgroundColor: "white",
+  },
+  scanCardView: {
+    width: deviceWidth - 32,
+    height: scale(250),
+    alignSelf: "center",
+    justifyContent: "center",
+    alignItems: "center",
+    borderWidth: scale(1),
+    borderRadius: scale(2),
+    borderColor: "#ddd",
+    borderBottomWidth: 0,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: scale(0.8),
+    shadowRadius: scale(2),
+    elevation: scale(4),
+    marginLeft: scale(5),
+    marginRight: scale(5),
+    marginTop: scale(10),
+    backgroundColor: "white",
+  },
+  buttonScan: {
+    width: scale(42),
+  },
+  descText: {
+    // //fontFamily: 'roboto-500',
+    padding: scale(16),
+    textAlign: "justify",
+    fontSize: scale(16),
+  },
+
+  highlight: {
+    // //fontFamily: 'roboto-500',
+    fontWeight: "700",
+  },
+
+  centerText: {
+    // //fontFamily: 'roboto-500',
+    flex: 1,
+    fontSize: scale(18),
+    padding: scale(32),
+    color: "#fff",
+  },
+  textBold: {
+    // //fontFamily: 'roboto-500',
+    fontWeight: "500",
+    color: "#000",
+  },
+  buttonTouchable: {
+    fontSize: scale(21),
+    // backgroundColor: '#ff0066',
+
+    width: deviceWidth - 62,
+    justifyContent: "center",
+    alignItems: "center",
+    height: scale(44),
+  },
+  buttonTextStyle: {
+    // //fontFamily: 'roboto-500',
+    color: "white",
+    fontWeight: "bold",
+  },
+  backgroundImage: {
+    flex: 1,
+    resizeMode: "cover",
+    backgroundColor: "#00a9cd",
+  },
+  mainContainer: {
+    flex: 1,
+  },
+  logoContainer: {
+    width: "100%",
+    height: verticalScale(80),
+  },
+  otherContainer: {
+    flex: 1,
+    // margin: scale(20),
+  },
+  image: {
+    alignSelf: "center",
+    top: scale(15),
+    width: moderateScale(155),
+    height: verticalScale(55),
+  },
+  gradientstyle: {
+    marginTop: scale(5),
+    height: moderateScale(45),
+    borderRadius: 7,
+    shadowColor: "rgba(0,0,0,1)",
+    shadowOffset: {
+      width: 3,
+      height: 3,
+    },
+    elevation: 30,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  gradientstyle_flash: {
+    marginTop: scale(15),
+    height: moderateScale(45),
+    borderRadius: 7,
+    shadowColor: "rgba(0,0,0,1)",
+    shadowOffset: {
+      width: 3,
+      height: 3,
+    },
+    elevation: 30,
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  button: {
+    flex: 1,
+    justifyContent: "center",
+    height: moderateScale(45),
+    borderRadius: 7,
+    shadowColor: "rgba(0,0,0,1)",
+    shadowOffset: {
+      width: 3,
+      height: 3,
+    },
+    // elevation: scale(25),
+    shadowOpacity: 0.25,
+    shadowRadius: 10,
+  },
+  or: {
+    // //fontFamily: 'roboto-500',
+    color: "rgba(142,141,141,1)",
+    fontSize: moderateScale(15),
+    lineHeight: moderateScale(25),
+    alignSelf: "center",
+    marginTop: scale(8),
+  },
+  scrollviewstyle: {
+    flexGrow: 1,
+    flexDirection: "column",
+  },
+  imageDrawerContainer: {
+    width: moderateScale(100),
+    height: moderateScale(100),
+    position: "absolute",
+    margin: scale(15),
+  },
+  textAutomaticSetup: {
+    top: scale(20),
+    // //fontFamily: 'roboto-700',
+    color: "white",
+    fontSize: verticalScale(25),
+    fontWeight: "bold",
+    textAlign: "center",
+  },
+  rect9: {
+    width: "100%",
+    height: scale(2),
+    backgroundColor: "#99ddeb",
+    marginTop: scale(30),
+  },
+  text1: {
+    // backgroundColor: 'rgba(1,100,100,1)',
+    // //fontFamily: 'roboto-regular',
+    color: "rgba(255,255,255,1)",
+    fontSize: verticalScale(15),
+    width: moderateScale(325),
+    marginTop: scale(15),
+    marginBottom: scale(25),
+    fontWeight: "bold",
+    margin: scale(20),
+  },
+};
+export default styles;
