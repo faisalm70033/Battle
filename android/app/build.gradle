@@ -85,6 +85,8 @@ android {
         versionCode 1
         versionName "1.0"
         missingDimensionStrategy 'react-native-camera', 'general'
+//        buildConfigField "boolean", "IS_HERMES_ENABLED", enableHermes.toString()
+//        buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", enableNewArchitecture.toString()
     }
     signingConfigs {
         debug {
@@ -122,4 +124,9 @@ dependencies {
         implementation jscFlavor
     }
 }
+project.ext.react = [
+        enableHermes: true,  // or false if not using Hermes
+        enableNewArchitecture: true,  // Set based on your usage
+]
+
 apply from: file("../../node_modules/react-native-vector-icons/fonts.gradle")

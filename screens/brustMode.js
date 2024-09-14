@@ -378,6 +378,7 @@ export default class brustMode extends Component {
           var currentDirectory = "Beetle_LOGS";
           let absolutePath = "";
           absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
+          console.log("------>>>>>>1",absolutePath);
           if (RNFS.exists(absolutePath)) {
             console.log("Reading folder");
             RNFS.readDir(absolutePath)
@@ -563,6 +564,7 @@ export default class brustMode extends Component {
                 var currentDirectory = "Beetle_LOGS";
                 let absolutePath = "";
                 absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
+                console.log("------>>>>>>2",absolutePath);
                 if (RNFS.exists(absolutePath)) {
                   console.log("Reading folder");
                   RNFS.readDir(absolutePath)
@@ -1043,7 +1045,7 @@ export default class brustMode extends Component {
         console.log(
           console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState)
         );
-        console.log("FIRMWAREFILEPATH: " + file);
+        console.log("FIRMWAREFILEPATH: ---->>." + file);
         await NordicDFU.startDFU({
           deviceAddress: peripheral.id,
           //   deviceName: peripheral.name,
@@ -1240,14 +1242,14 @@ export default class brustMode extends Component {
         console.log(
           console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState)
         );
-        console.log("FIRMWAREFILEPATH: " + file);
+        console.log("FIRMWAREFILEPATH: " + JSON.stringify(file));
         await NordicDFU.startDFU({
           deviceAddress: peripheral.id,
           //   deviceName: peripheral.name,
           filePath: file,
           //   alternativeAdvertisingNameEnabled: Platform.OS == 'ios' ? false:null
         })
-
+        ///hello
           .then(async (res) => {
             isSuccess = true;
             response = res;
@@ -3076,6 +3078,7 @@ export default class brustMode extends Component {
                       color: "black",
                       paddingVertical: 6,
                       paddingHorizontal: 6,
+                      width:50
                     }}
                   >
                     close

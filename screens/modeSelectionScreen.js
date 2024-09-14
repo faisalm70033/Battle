@@ -110,6 +110,7 @@ export default class modeSelectionScreen extends Component {
             var currentDirectory = 'Pkd_Ota_Logs';
             let absolutePath = '';
             absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
+            console.log("------>>>>>>3",absolutePath);
             if (RNFS.exists(absolutePath)) {
               console.log('Reading folder');
               RNFS.readDir(absolutePath)
