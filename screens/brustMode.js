@@ -17,6 +17,7 @@ import {
   BackHandler,
   AppState,
 } from "react-native";
+import { Buffer } from 'buffer';
 import Controller from "../utils/Controller";
 import { EventRegister } from "react-native-event-listeners";
 import { NordicDFU, DFUEmitter } from '@domir/react-native-nordic-dfu';  //react-native-nordic-dfu
@@ -37,6 +38,9 @@ const BleManagerModule = NativeModules.BleManager;
 const bleManagerEmitter = new NativeEventEmitter(BleManagerModule);
 import NetInfo from "@react-native-community/netinfo";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+const serviceUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68523';
+const characteristicUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68524';
+const shipModeCommand = [0x02]; // Data to write
 export default class brustMode extends Component {
   childKey = 0;
   dfuProgressListener = null;
@@ -143,99 +147,261 @@ export default class brustMode extends Component {
         console.log(err.message);
       });
   }
-
   async checkPermissions() {
-    return new Promise(async function (resolve, reject) {
-      var locationPermission = "denied";
-      var storagePermission = "denied";
-
-      if (Platform.OS === "android" && Platform.Version >= 23) {
-        await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-        ).then(async (result) => {
-          if (result) {
-            locationPermission = "granted";
-          } else {
-            return new Promise(async function (resolve, reject) {
-              Alert.alert(
-                "Location Permission",
-                "This permission is required to find nearby Beetles. ",
-                [
-                  {
-                    text: "OK",
-                    onPress: async () => {
-                      await PermissionsAndroid.request(
-                        PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
-                      ).then((result) => {
-                        if (result == "granted") {
-                          locationPermission = "granted";
-                        } else if (result == "denied") {
-                          locationPermission = "denied";
-                        } else if (result == "never_ask_again") {
-                          locationPermission = "never_ask_again";
-                          Toast.show(
-                            "APP will not work properly. Please Go into Settings -> Applications -> APP_NAME -> Permissions and Allow permissions to continue"
-                          );
-                        }
-                        resolve();
-                      });
-                    },
-                  },
-                ],
-                { cancelable: false }
-              );
-            });
-          }
-        });
+    let locationPermission = "denied";
+    let storagePermission = "denied";
+    let bluetoothScanPermission = "denied";
+    let bluetoothConnectPermission = "denied";
+  
+    if (Platform.OS === "android" && Platform.Version >= 23) {
+      // For Android 12+ (API level 31 and above)
+      if (Platform.Version >= 31) {
+        // Automatically grant location and storage permissions for Android 12+
+        
+        storagePermission = "granted";
+  
+        // Request Bluetooth Scan Permission
+        bluetoothScanPermission = await this.requestBluetoothPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, "Bluetooth Scan Permission", "This app needs access to scan for nearby Bluetooth devices.");
+        locationPermission = await this.requestLocationPermission();
+        // Request Bluetooth Connect Permission
+        bluetoothConnectPermission = await this.requestBluetoothPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT, "Bluetooth Connect Permission", "This app needs access to connect to Bluetooth devices.");
+      } else {
+        // For Android versions below 12 (API level 31)
+        locationPermission = await this.requestLocationPermission();
+        storagePermission = await this.requestStoragePermission();
       }
-
-      if (Platform.OS === "android" && Platform.Version >= 23) {
-        await PermissionsAndroid.check(
-          PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
-        ).then(async (result) => {
-          if (result) {
-            storagePermission = "granted";
-          } else {
-            return new Promise(async function (resolve, reject) {
-              Alert.alert(
-                "Storage Permission",
-                "This permission is required to load firmware file save log files in storage. ",
-                [
-                  {
-                    text: "OK",
-                    onPress: async () => {
-                      await PermissionsAndroid.request(
-                        PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
-                      ).then((result) => {
-                        if (result == "granted") {
-                          storagePermission = "granted";
-                        } else if (result == "denied") {
-                          storagePermission = "denied";
-                        } else if (result == "never_ask_again") {
-                          storagePermission = "never_ask_again";
-                          Toast.show(
-                            "APP will not work properly. Please Go into Settings -> Applications -> APP_NAME -> Permissions and Allow permissions to continue"
-                          );
-                        }
-                        resolve();
-                      });
-                    },
-                  },
-                ],
-                { cancelable: false }
-              );
-            });
-          }
-        });
-      }
-
-      resolve({
-        locationPermission: locationPermission,
-        storagePermission: storagePermission,
-      });
-    });
+    }
+  
+    return {
+      locationPermission,
+      bluetoothScanPermission,
+      bluetoothConnectPermission,
+      storagePermission,
+    };
   }
-
+  
+  async requestBluetoothPermission(permission, title, message) {
+    const result = await PermissionsAndroid.request(permission, {
+      title,
+      message,
+      buttonNeutral: "Ask Me Later",
+      buttonNegative: "Cancel",
+      buttonPositive: "OK",
+    });
+    return result === PermissionsAndroid.RESULTS.GRANTED ? "granted" : "denied";
+  }
+  
+  async requestLocationPermission() {
+    const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    if (hasPermission) {
+      return "granted";
+    }
+  
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+    if (result === PermissionsAndroid.RESULTS.GRANTED) {
+      return "granted";
+    } else {
+      // Handle denial
+      Toast.show("Location permission denied. Please allow it for full functionality.");
+      return "denied";
+    }
+  }
+  
+  async requestStoragePermission() {
+    const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+    if (hasPermission) {
+      return "granted";
+    }
+  
+    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
+    if (result === PermissionsAndroid.RESULTS.GRANTED) {
+      return "granted";
+    } else {
+      // Handle denial
+      Toast.show("Storage permission denied. Please allow it for full functionality.");
+      return "denied";
+    }
+  }
+  
+  // async checkPermissions() {
+  //   return new Promise(async (resolve, reject) => {
+  //     let locationPermission = "denied";
+  //     let storagePermission = "denied";
+  //     let bluetoothScanPermission = "denied";
+  //     let bluetoothConnectPermission = "denied";
+  
+  //     if (Platform.OS === "android" && Platform.Version >= 23) {
+  //       // Android 12+ (API level 31 and above) - Auto grant location and storage permissions
+  //       if (Platform.Version >= 31) {
+  //         // Automatically grant location and storage permissions for Android 12+
+  //         locationPermission = "granted";
+  //         storagePermission = "granted";
+  
+  //         // Request Bluetooth Scan and Connect Permissions on Android 12+
+  //         const bluetoothScanRequestResult = await PermissionsAndroid.request(
+  //           PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+  //           {
+  //             title: "Bluetooth Scan Permission",
+  //             message: "This app needs access to scan for nearby Bluetooth devices.",
+  //             buttonNeutral: "Ask Me Later",
+  //             buttonNegative: "Cancel",
+  //             buttonPositive: "OK",
+  //           }
+  //         );
+  
+  //         if (bluetoothScanRequestResult === PermissionsAndroid.RESULTS.GRANTED) {
+  //           bluetoothScanPermission = "granted";
+  //         } else if (bluetoothScanRequestResult === PermissionsAndroid.RESULTS.DENIED) {
+  //           bluetoothScanPermission = "denied";
+  //         } else {
+  //           bluetoothScanPermission = "never_ask_again";
+  //         }
+  
+  //         const bluetoothConnectRequestResult = await PermissionsAndroid.request(
+  //           PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+  //           {
+  //             title: "Bluetooth Connect Permission",
+  //             message: "This app needs access to connect to Bluetooth devices.",
+  //             buttonNeutral: "Ask Me Later",
+  //             buttonNegative: "Cancel",
+  //             buttonPositive: "OK",
+  //           }
+  //         );
+  
+  //         if (bluetoothConnectRequestResult === PermissionsAndroid.RESULTS.GRANTED) {
+  //           bluetoothConnectPermission = "granted";
+  //         } else if (bluetoothConnectRequestResult === PermissionsAndroid.RESULTS.DENIED) {
+  //           bluetoothConnectPermission = "denied";
+  //         } else {
+  //           bluetoothConnectPermission = "never_ask_again";
+  //         }
+  //       } else {
+  //         // For Android versions below 12 (API level 31), request location and storage permissions
+  
+  //         // Location Permission
+  //         await PermissionsAndroid.check(
+  //           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+  //         ).then(async (result) => {
+  //           if (result) {
+  //             locationPermission = "granted";
+  //           } else {
+  //             await new Promise((resolve) => {
+  //               Alert.alert(
+  //                 "Location Permission",
+  //                 "This permission is required to find nearby devices.",
+  //                 [
+  //                   {
+  //                     text: "OK",
+  //                     onPress: async () => {
+  //                       const locationRequestResult = await PermissionsAndroid.request(
+  //                         PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
+  //                       );
+  //                       if (locationRequestResult === "granted") {
+  //                         locationPermission = "granted";
+  //                       } else if (locationRequestResult === "denied") {
+  //                         locationPermission = "denied";
+  //                       } else if (locationRequestResult === "never_ask_again") {
+  //                         locationPermission = "never_ask_again";
+  //                         Toast.show(
+  //                           "APP will not work properly. Please go to Settings -> Applications -> APP_NAME -> Permissions and Allow permissions."
+  //                         );
+  //                       }
+  //                       resolve();
+  //                     },
+  //                   },
+  //                 ],
+  //                 { cancelable: false }
+  //               );
+  //             });
+  //           }
+  //         });
+  
+  //         // Storage Permission
+  //         await PermissionsAndroid.check(
+  //           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+  //         ).then(async (result) => {
+  //           if (result) {
+  //             storagePermission = "granted";
+  //           } else {
+  //             await new Promise((resolve) => {
+  //               Alert.alert(
+  //                 "Storage Permission",
+  //                 "This permission is required to load firmware files and save log files to storage.",
+  //                 [
+  //                   {
+  //                     text: "OK",
+  //                     onPress: async () => {
+  //                       const storageRequestResult = await PermissionsAndroid.request(
+  //                         PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
+  //                       );
+  //                       if (storageRequestResult === "granted") {
+  //                         storagePermission = "granted";
+  //                       } else if (storageRequestResult === "denied") {
+  //                         storagePermission = "denied";
+  //                       } else if (storageRequestResult === "never_ask_again") {
+  //                         storagePermission = "never_ask_again";
+  //                         Toast.show(
+  //                           "APP will not work properly. Please go to Settings -> Applications -> APP_NAME -> Permissions and Allow permissions."
+  //                         );
+  //                       }
+  //                       resolve();
+  //                     },
+  //                   },
+  //                 ],
+  //                 { cancelable: false }
+  //               );
+  //             });
+  //           }
+  //         });
+  //       }
+  //     }
+  
+  //     resolve({
+  //       locationPermission,
+  //       bluetoothScanPermission,
+  //       bluetoothConnectPermission,
+  //       storagePermission,
+  //     });
+  //   });
+  // }
+  async connectAndWriteData(nearestDeviceId, callback) {
+    console.log('Scanning for devices...');
+    try {
+      // Start BLE scanning for nearby devices
+      console.log('Scanning for devices...');
+      BleManager.start({ showAlert: false });
+  
+      // Connect to the nearest device
+      console.log(`Connecting to device: ${nearestDeviceId.id}`);
+      await BleManager.connect(nearestDeviceId.id);
+  
+      // Wait for connection to complete
+      await BleManager.retrieveServices(nearestDeviceId.id);
+      console.log('Connected and services retrieved.');
+  
+      // Convert the shipModeCommand to a buffer for writing to the device
+      const dataToWrite = Buffer.from(shipModeCommand);
+  
+      // Write data to the characteristic
+      await BleManager.write(nearestDeviceId.id, serviceUUID, characteristicUUID, dataToWrite.toJSON().data);
+      console.log('Data written successfully:', shipModeCommand);
+      
+      // Optionally disconnect the device after writing
+      await BleManager.disconnect(nearestDeviceId.id);
+      console.log('Disconnected from device.');
+      
+      // Invoke the callback with success
+      if (callback) {
+        callback(null, 'Data written successfully');
+      }
+    } catch (error) {
+      console.error('Error during BLE operation:', error);
+      // Invoke the callback with the error
+      if (callback) {
+        callback(error, null);
+      }
+    }
+  };
   writeLog(time, log, type) {
     var thisClass = this;
     return new Promise(async function (resolve, reject) {
@@ -380,7 +546,7 @@ export default class brustMode extends Component {
           absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
           console.log("------>>>>>>1",absolutePath);
           if (RNFS.exists(absolutePath)) {
-            console.log("Reading folder");
+            console.log(" ---->>> Reading folder");
             RNFS.readDir(absolutePath)
               .then(async (files) => {
                 if (files != null && files.length > 0) {
@@ -551,7 +717,9 @@ export default class brustMode extends Component {
             await AsyncStorage.removeItem("scannedMacAddress");
 
             console.log("CHECK HEREEEEE");
+            
             this.startProcess();
+           
           } else if (macAddress == null) {
             NetInfo.fetch().then((state) => {
               console.log(state);
@@ -609,7 +777,7 @@ export default class brustMode extends Component {
             "this.state.scannedMacAddress",
             this.state.scannedMacAddress
           );
-          console.log(this.state.firmwarefilepath);
+          console.log("---->>>>",this.state.firmwarefilepath);
 
           await this.sleep(500);
 
@@ -633,7 +801,7 @@ export default class brustMode extends Component {
                 await Controller.getInstance()
                   .checkLocationNbluetooth()
                   .then(async (status) => {
-                    console.log(status);
+                    console.log("------check----->>>",status);
 
                     if (
                       status.bluetoothStatus == "enabled" &&
@@ -1159,6 +1327,21 @@ export default class brustMode extends Component {
         message: "Dfu Success On Device: " + response.deviceAddress,
         type: "success",
       });
+
+      console.log("line 1255 is dfu completed ----<<<<<")
+      await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
+        if (error) {
+          console.error('Error writing data:', error);
+        } else {
+          this.state.logs.push({
+            time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
+            message: "Shipment mode is enable",
+            type: "success",
+          });
+          this.setState({ closestDevice: [] });
+          console.log(successMessage);
+        }
+       } );
     } else {
       var index = this.getIndexOfDevice(
         this.state.devicesList[this.state.currentDevice - 1].id
@@ -1596,15 +1779,16 @@ export default class brustMode extends Component {
   async startProcess() {
     console.log("Coming Here");
     await this.createlogFile();
-    var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v3_1.zip");
+    var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v2_1.zip");
     var bootloaderFliePath = await MNSIT.getFilePath(
       "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
     );
-
+console.log("file path ---->>>2000" , firmwareFilePath)
+console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
     if (Platform.OS == "android") {
-      var destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v3_1.zip";
+      var destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v2_1.zip";
       await RNFS.copyFile(firmwareFilePath, destination);
-
+//EISAI_WEARABLE_PH3_REV_0_6_2_PKG
       var bootloaderDestination =
         RNFS.CachesDirectoryPath + "/" + "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip";
       await RNFS.copyFile(bootloaderFliePath, bootloaderDestination);
@@ -1625,6 +1809,29 @@ export default class brustMode extends Component {
           permissions.locationPermission == "granted" &&
           permissions.storagePermission == "granted"
         ) {
+          Controller.getInstance().scanDevices();
+          this.setState({
+            isProcessCompleted: true,
+            aborted: false,
+            progress: 0,
+            totalProgress: 0,
+            devicesList: [],
+            logs: [],
+            peripherals: new Map(),
+            connectionStatus: "Not Connected",
+            autoDFUStatus: "Scanning for devices",
+            showConnectionDialog: true,
+            firmwarefilepath: {
+              bootloader: bootloaderDestination,
+              firmware: destination,
+            },
+            deviceSuggesionScan: false,
+            dfuState: "Not Started",
+            autoDFUStatus: "Scanning",
+            isProcessCompleted: false,
+            dfuFailedDevices: 0,
+          });
+          console.log("all permission granted ---->>>>")
           await Controller.getInstance()
             .checkLocationNbluetooth()
             .then(async (status) => {
@@ -1632,6 +1839,8 @@ export default class brustMode extends Component {
                 status.bluetoothStatus == "enabled" &&
                 status.locationStatus == "enabled"
               ) {
+
+                console.log("bluetooth is enable ----<<<")
                 if (this.state.isScanning) {
                   this.stopScan();
                 }
@@ -2047,10 +2256,36 @@ export default class brustMode extends Component {
                 message: "Version is already upto date",
                 type: "success",
               });
+              console.log("line 2170 dfu versio is already uptodate ----<<<")
+             
+              
+              // this.state.logs.push({
+              //   time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
+              //   message: "Version is already upto date 111",
+              //   type: "success",
+              // });
               // await this.writeLog(moment().format('DD/MM/YYYY HH:mm:ss.SSS') , "All devices already have updated version", 'success')
               console.log("this.uploadLogFile() 3");
-              // await this.uploadLogFile();
+              console.log('Closest device:', this.state.closestDevice[0].id);
 
+              // await this.uploadLogFile();
+           
+             await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
+                if (error) {
+                  console.error('Error writing data:', error);
+                } else {
+                  this.state.logs.push({
+                    time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
+                    message: "Shipment mode is enable",
+                    type: "success",
+                  });
+                  this.setState({ closestDevice: [] });
+                  console.log(successMessage);
+                }
+               } );
+              
+                
+              
               this.setState({
                 totalDevices: 0,
                 currentDevice: 0,
@@ -2386,7 +2621,7 @@ export default class brustMode extends Component {
                   this.setState({
                     showSearchingDialog: true,
                     isDeviceFoundAfterBootloader: false,
-                    closestDevice: [],
+                   // closestDevice: [],
                   });
 
                   this.startManualScan();
@@ -3113,8 +3348,8 @@ export default class brustMode extends Component {
                       }
                       this.setState({ showSearchingDialog: false });
                       this.startManualProcess(this.state.closestDevice[0]);
-                      this.setState({ closestDevice: [] });
-                       this.performDfu2(this.state.closestDevice[0]);
+                     // this.setState({ closestDevice: [] });
+                      // this.performDfu2(this.state.closestDevice[0]);
                     }}
                   >
                     <Text

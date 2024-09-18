@@ -84,14 +84,7 @@ export default class Controller {
     return this.myInstance;
   }
 
-  async initialize() {
-    const permissions = await this.checkPermissions();
-
-    if (
-        permissions.locationPermission === "granted" &&
-        permissions.bluetoothScanPermission === "granted" &&
-        permissions.bluetoothConnectPermission === "granted"
-    ){
+  initialize() {
     BleManager.start({showAlert: false}).then(() => {
       // Success code
       console.log('Module initialized');
@@ -105,37 +98,25 @@ export default class Controller {
       );
       bleManagerEmitter.addListener('BleManagerStopScan', this.handleStopScan);
     });
-
-  }else{
-    console.log("Permission not Granted")
-  }
   }
   async scanDevices() {
-    const permissions = await this.checkPermissions();
-
-    if (
-        permissions.locationPermission === "granted" &&
-        permissions.bluetoothScanPermission === "granted" &&
-        permissions.bluetoothConnectPermission === "granted"
-    ) {
-        // Proceed with scanning
-        if (!isScanning) {
-            await this.sleep(500);
-            BleManager.scan([], 10, false)
-                .then(results => {
-                    console.log('Scanning...', results);
-                    isScanning = true;
-                    EventRegister.emit('scanningStatus', true);
-                })
-                .catch(err => {
-                    console.error(err);
-                });
-        }
-    } else {
-        console.log("Permissions not granted");
+    if (!isScanning) {
+      bleManagerEmitter.addListener(
+        'BleManagerDiscoverPeripheral',
+        this.handleDiscoverPeripheral.bind(this),
+      );
+      await this.sleep(500);
+      BleManager.scan([], 10, false)
+        .then(results => {
+          console.log('Scanning...', results);
+          isScanning = true;
+          EventRegister.emit('scanningStatus', true);
+        })
+        .catch(err => {
+          console.error(err);
+        });
     }
-}
-
+  }
 
   disconnect(id) {
     return new Promise(function (resolve, reject) {
@@ -271,6 +252,7 @@ export default class Controller {
   }
 
   async checkBluetooth() {
+   
     return new Promise(async function (resolve, reject) {
       var bluetoothStatus = '';
 
@@ -286,84 +268,9 @@ export default class Controller {
       resolve(bluetoothStatus);
     });
   }
-  async checkPermissions() {
-    return new Promise(async (resolve, reject) => {
-        let locationPermission = "denied";
-        let bluetoothScanPermission = "denied";
-        let bluetoothConnectPermission = "denied";
-
-        if (Platform.OS === 'android') {
-            if (Platform.Version >= 31) { // Android 12 and above
-                // Request BLUETOOTH_SCAN and BLUETOOTH_CONNECT for Android 12+
-                const scanGranted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
-                    {
-                        title: 'Bluetooth Scan Permission',
-                        message: 'This app needs access to Bluetooth scanning.',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'OK',
-                    }
-                );
-
-                const connectGranted = await PermissionsAndroid.request(
-                    PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-                    {
-                        title: 'Bluetooth Connect Permission',
-                        message: 'This app needs access to connect to Bluetooth devices.',
-                        buttonNeutral: 'Ask Me Later',
-                        buttonNegative: 'Cancel',
-                        buttonPositive: 'OK',
-                    }
-                );
-
-                if (scanGranted === PermissionsAndroid.RESULTS.GRANTED) {
-                    bluetoothScanPermission = "granted";
-                } else if (scanGranted === PermissionsAndroid.RESULTS.DENIED) {
-                    bluetoothScanPermission = "denied";
-                } else {
-                    bluetoothScanPermission = "never_ask_again";
-                }
-
-                if (connectGranted === PermissionsAndroid.RESULTS.GRANTED) {
-                    bluetoothConnectPermission = "granted";
-                } else if (connectGranted === PermissionsAndroid.RESULTS.DENIED) {
-                    bluetoothConnectPermission = "denied";
-                } else {
-                    bluetoothConnectPermission = "never_ask_again";
-                }
-            }
-
-            // Request ACCESS_FINE_LOCATION for location access
-            const locationGranted = await PermissionsAndroid.request(
-                PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
-                {
-                    title: 'Location Permission',
-                    message: 'This app needs access to your location to scan Bluetooth devices.',
-                    buttonNeutral: 'Ask Me Later',
-                    buttonNegative: 'Cancel',
-                    buttonPositive: 'OK',
-                }
-            );
-
-            if (locationGranted === PermissionsAndroid.RESULTS.GRANTED) {
-                locationPermission = "granted";
-            } else if (locationGranted === PermissionsAndroid.RESULTS.DENIED) {
-                locationPermission = "denied";
-            } else {
-                locationPermission = "never_ask_again";
-            }
-        }
-
-        resolve({
-            locationPermission,
-            bluetoothScanPermission,
-            bluetoothConnectPermission
-        });
-    });
-}
 
   async checkLocationNbluetooth() {
+    console.log("enter in check bluethoot")
     return new Promise(async function (resolve, reject) {
       var locationStatus = '';
       var bluetoothStatus = '';
