@@ -2699,6 +2699,8 @@ console.log("Bootloader exists: ", bootloaderExists);
             width: "100%",
             marginVertical: verticalScale(10),
             fontSize: scale(15),
+            color:'black',
+            fontWeight:'bold'
           }}
         >
           Version: 1.0.7
@@ -2873,10 +2875,10 @@ console.log("Bootloader exists: ", bootloaderExists);
                   <View
                     style={{ justifyContent: "center", alignItems: "center" }}
                   >
-                    <Text style={{ fontSize: scale(15) }}>
+                    <Text style={{ fontSize: scale(15),color:'black' }}>
                       Scanning for devices
                     </Text>
-                    <Text style={{ fontSize: scale(15) }}>
+                    <Text style={{ fontSize: scale(15),color:'black' }}>
                       {"Devices Found: " + this.state.devicesList.length}
                     </Text>
                   </View>
@@ -2887,12 +2889,12 @@ console.log("Bootloader exists: ", bootloaderExists);
                   <View
                     style={{ justifyContent: "center", alignItems: "center" }}
                   >
-                    <Text style={{ fontSize: scale(15) }}>
+                    <Text style={{ fontSize: scale(15) , color:'black'}}>
                       {this.state.autoDFUStatus === "Filtering"
                         ? "Filtering Device"
                         : "Fetching Device Information"}
                     </Text>
-                    <Text style={{ fontSize: scale(15) }}>
+                    <Text style={{ fontSize: scale(15),color:'black' }}>
                       {this.state.autoDFUStatus === "Filtering"
                         ? "Filtering Device: " +
                           this.state.currentDevice +
@@ -2917,7 +2919,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                         marginRight: Platform.OS == "ios" ? scale(10) : null,
                       }}
                     >
-                      <Text style={{ fontSize: scale(15) }}>
+                      <Text style={{ fontSize: scale(15),color:'black' }}>
                         {"Device: " +
                           this.state.currentDevice +
                           "/" +
@@ -2941,7 +2943,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15) }}>
+                        <Text style={{ fontSize: scale(15) ,color:'black'}}>
                           {"DFU State: "}
                         </Text>
                       </View>
@@ -2953,7 +2955,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15) }}>
+                        <Text style={{ fontSize: scale(15),color:'black' }}>
                           {this.state.dfuState}
                         </Text>
                       </View>
@@ -2976,7 +2978,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15) }}>
+                        <Text style={{ fontSize: scale(15),color:'black' }}>
                           Dfu Progress:{" "}
                         </Text>
                       </View>
@@ -3195,7 +3197,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                       }
                     }}
                   >
-                    <Text style={{ fontWeight: "bold", color: "black" }}>
+                    <Text style={{ fontWeight: "bold", color: "white" }}>
                       Abort DFU
                     </Text>
                   </TouchableOpacity>
