@@ -67,7 +67,7 @@ export default class brustMode extends Component {
       progress: 0,
       totalProgress: 0,
       deviceNameFilter: "Beetle",
-      firnwareVersionFilter: "0.3.2",
+      firnwareVersionFilter: "0.3.1",
       bootloaderVersion: "0.2.2",
       // 0.6.3
       // autoDFUStatus: 'Not Started',
@@ -1217,7 +1217,7 @@ export default class brustMode extends Component {
         );
         console.log("FIRMWAREFILEPATH: ---->>." + file,"--->>>", Object.keys(this.state.firmwarefilepath)[a]);
         console.log("FIRMWAREFILEPATH: ---->>." + this.state.firmwarefilepath);
-        var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v2_1.zip");
+        var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v3_1.zip");
         var bootloaderFliePath = await MNSIT.getFilePath(
           "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
         );
@@ -1795,7 +1795,7 @@ export default class brustMode extends Component {
   async startProcess() {
     console.log("Coming Here");
     await this.createlogFile();
-    var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v2_1.zip");
+    var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v3_1.zip");
     var bootloaderFliePath = await MNSIT.getFilePath(
       "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
     );
@@ -1805,7 +1805,7 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
 
 
     if (Platform.OS == "android") {
-      const destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v2_1.zip";
+      const destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v3_1.zip";
       await RNFS.copyFile(firmwareFilePath, destination);
       console.log("Firmware file copied to: ", destination);
     
