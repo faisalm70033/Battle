@@ -28,7 +28,8 @@ import Dialog from "react-native-dialog";
 import { scale, verticalScale, moderateScale } from "../utils/scale";
 import DocumentPicker from "react-native-document-picker";
 import Icon from "react-native-vector-icons/Ionicons";
-var RNFS = require("react-native-fs");
+// var RNFS = require("react-native-fs");
+import RNFS from 'react-native-fs';
 import storage from "@react-native-firebase/storage";
 import moment from "moment";
 import { AutocompleteDropdown } from "react-native-autocomplete-dropdown";
@@ -41,6 +42,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const serviceUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68523';
 const characteristicUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68524';
 const shipModeCommand = [0x02]; // Data to write
+const {FileHandler} = NativeModules;
 export default class brustMode extends Component {
   childKey = 0;
   dfuProgressListener = null;
@@ -65,7 +67,7 @@ export default class brustMode extends Component {
       progress: 0,
       totalProgress: 0,
       deviceNameFilter: "Beetle",
-      firnwareVersionFilter: "0.3.1",
+      firnwareVersionFilter: "0.3.2",
       bootloaderVersion: "0.2.2",
       // 0.6.3
       // autoDFUStatus: 'Not Started',
@@ -159,7 +161,7 @@ export default class brustMode extends Component {
         // Automatically grant location and storage permissions for Android 12+
         
         storagePermission = "granted";
-  
+       
         // Request Bluetooth Scan Permission
         bluetoothScanPermission = await this.requestBluetoothPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, "Bluetooth Scan Permission", "This app needs access to scan for nearby Bluetooth devices.");
         locationPermission = await this.requestLocationPermission();
@@ -365,7 +367,7 @@ export default class brustMode extends Component {
   //   });
   // }
   async connectAndWriteData(nearestDeviceId, callback) {
-    console.log('Scanning for devices...');
+   // console.log('Scanning for devices...');
     try {
       // Start BLE scanning for nearby devices
       console.log('Scanning for devices...');
@@ -1213,11 +1215,19 @@ export default class brustMode extends Component {
         console.log(
           console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState)
         );
-        console.log("FIRMWAREFILEPATH: ---->>." + file);
+        console.log("FIRMWAREFILEPATH: ---->>." + file,"--->>>", Object.keys(this.state.firmwarefilepath)[a]);
+        console.log("FIRMWAREFILEPATH: ---->>." + this.state.firmwarefilepath);
+        var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v2_1.zip");
+        var bootloaderFliePath = await MNSIT.getFilePath(
+          "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
+        );
+       // FIRMWAREFILEPATH: ---->>./data/user/0/com.battle/cache/PALARUM_v2_1.zip --->>> firmware
+       //file:/storage/emulated/0/Android/data/com.battle/files/PALARUM_v2_1.zip
         await NordicDFU.startDFU({
           deviceAddress: peripheral.id,
           //   deviceName: peripheral.name,
-          filePath: file,
+          filePath: firmwareFilePath
+          //"file:/storage/emulated/0/Android/data/com.battle/files/PALARUM_v2_1.zip",
           //   alternativeAdvertisingNameEnabled: Platform.OS == 'ios' ? false:null
         })
 
@@ -1331,6 +1341,12 @@ export default class brustMode extends Component {
       console.log("line 1255 is dfu completed ----<<<<<")
       await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
         if (error) {
+          this.state.logs.push({
+            time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
+            message: "Shipment mode not enable",
+            type: "error",
+          });
+          this.setState({ closestDevice: [] });
           console.error('Error writing data:', error);
         } else {
           this.state.logs.push({
@@ -1619,7 +1635,7 @@ export default class brustMode extends Component {
         let filteredDevices = [];
 
         for (let i = 0; i < this.state.devicesList.length; i++) {
-          if (this.state.devicesList[i].rssi > -45) {
+          if (this.state.devicesList[i].rssi > -60) {
             filteredDevices.push(this.state.devicesList[i]);
           }
         }
@@ -1785,13 +1801,22 @@ export default class brustMode extends Component {
     );
 console.log("file path ---->>>2000" , firmwareFilePath)
 console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
+
+
+
     if (Platform.OS == "android") {
-      var destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v2_1.zip";
+      const destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v2_1.zip";
       await RNFS.copyFile(firmwareFilePath, destination);
-//EISAI_WEARABLE_PH3_REV_0_6_2_PKG
-      var bootloaderDestination =
-        RNFS.CachesDirectoryPath + "/" + "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip";
+      console.log("Firmware file copied to: ", destination);
+    
+      const bootloaderDestination = RNFS.CachesDirectoryPath + "/" + "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip";
       await RNFS.copyFile(bootloaderFliePath, bootloaderDestination);
+      console.log("Bootloader file copied to: ", bootloaderDestination);
+      const firmwareExists = await RNFS.exists(destination);
+console.log("Firmware exists: ", firmwareExists);
+
+const bootloaderExists = await RNFS.exists(bootloaderDestination);
+console.log("Bootloader exists: ", bootloaderExists);
 
       //  Controller.getInstance().checkPermissions().then(async (permissions) =>{
       this.checkPermissions().then(async (permissions) => {
@@ -1844,6 +1869,8 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
                 if (this.state.isScanning) {
                   this.stopScan();
                 }
+               
+                
                 console.log("SCANNING HAS BEEN STARTED");
                 Controller.getInstance().scanDevices();
                 this.setState({
@@ -2272,6 +2299,12 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
            
              await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
                 if (error) {
+                  this.state.logs.push({
+                    time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
+                    message: "Shipment mode not  enable",
+                    type: "error",
+                  });
+                  this.setState({ closestDevice: [] });
                   console.error('Error writing data:', error);
                 } else {
                   this.state.logs.push({
@@ -3162,7 +3195,7 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
                       }
                     }}
                   >
-                    <Text style={{ fontWeight: "bold", color: "white" }}>
+                    <Text style={{ fontWeight: "bold", color: "black" }}>
                       Abort DFU
                     </Text>
                   </TouchableOpacity>
@@ -3175,7 +3208,7 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
                       marginTop: verticalScale(10),
                     }}
                   >
-                    <Text style={{ fontSize: scale(15) }}>
+                    <Text style={{ fontSize: scale(15) , color:'black' }}>
                       Please Wait, aborting
                     </Text>
                     <ActivityIndicator size={"large"}></ActivityIndicator>
@@ -3290,7 +3323,7 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
 
             <View>
               <View style={{ flexDirection: "row" }}>
-                <Text style={{ fontSize: 18 }}>Searching...</Text>
+                <Text style={{ fontSize: 18,color:'black',fontWeight:'bold'}}>Searching...</Text>
                 <View style={{ width: 150 }} />
                 {this.state.isScanning ? (
                   <ActivityIndicator color="red" size="small" />

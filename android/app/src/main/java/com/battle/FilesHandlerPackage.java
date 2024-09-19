@@ -4,6 +4,7 @@
 package com.battle;
 
 import android.os.Build;
+import android.util.Log;
 
 import com.facebook.react.ReactPackage;
 import com.facebook.react.bridge.NativeModule;
@@ -24,9 +25,12 @@ public class FilesHandlerPackage implements ReactPackage {
     List<NativeModule> modules = new ArrayList<>();
 
     try {
-    
+
+      if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+        Log.e("battle", "enter: " );
         modules.add(new FilesHandler(reactContext));
-      
+      }
+
     } catch (Exception e) {
       // do nothing. a module is not added into a package.
     }
