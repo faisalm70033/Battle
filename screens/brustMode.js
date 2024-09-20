@@ -42,7 +42,7 @@ import AsyncStorage from "@react-native-async-storage/async-storage";
 const serviceUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68523';
 const characteristicUUID = '0920AD6A-51FA-46C7-9058-49AFF8A68524';
 const shipModeCommand = [0x02]; // Data to write
-const {FileHandler} = NativeModules;
+const { FileHandler } = NativeModules;
 export default class brustMode extends Component {
   childKey = 0;
   dfuProgressListener = null;
@@ -91,7 +91,7 @@ export default class brustMode extends Component {
       locationPermission: "not granted",
       storagePermission: "not granted",
       showSearchingDialog: false,
-     expiryDate: "2024-12-31T23:59:59Z",
+      expiryDate: "2024-12-31T23:59:59Z",
 
       showExpiryAlert: false,
       expiryMessage:
@@ -154,26 +154,42 @@ export default class brustMode extends Component {
     let storagePermission = "denied";
     let bluetoothScanPermission = "denied";
     let bluetoothConnectPermission = "denied";
-  
-    if (Platform.OS === "android" && Platform.Version >= 23) {
-      // For Android 12+ (API level 31 and above)
-      if (Platform.Version >= 31) {
-        // Automatically grant location and storage permissions for Android 12+
-        
-        storagePermission = "granted";
-       
-        // Request Bluetooth Scan Permission
-        bluetoothScanPermission = await this.requestBluetoothPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN, "Bluetooth Scan Permission", "This app needs access to scan for nearby Bluetooth devices.");
-        locationPermission = await this.requestLocationPermission();
-        // Request Bluetooth Connect Permission
-        bluetoothConnectPermission = await this.requestBluetoothPermission(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT, "Bluetooth Connect Permission", "This app needs access to connect to Bluetooth devices.");
-      } else {
-        // For Android versions below 12 (API level 31)
-        locationPermission = await this.requestLocationPermission();
-        storagePermission = await this.requestStoragePermission();
+
+    try {
+      if (Platform.OS === "android" && Platform.Version >= 23) {
+        // For Android 12+ (API level 31 and above)
+        if (Platform.Version >= 31) {
+          // Automatically grant storage permissions for Android 12+
+          storagePermission = "granted";
+
+          // Request Bluetooth Scan Permission
+          bluetoothScanPermission = await this.requestBluetoothPermission(
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
+            "Bluetooth Scan Permission",
+            "This app needs access to scan for nearby Bluetooth devices."
+          );
+
+          // Request Location Permission
+          locationPermission = await this.requestLocationPermission();
+
+          // Request Bluetooth Connect Permission
+          bluetoothConnectPermission = await this.requestBluetoothPermission(
+            PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+            "Bluetooth Connect Permission",
+            "This app needs access to connect to Bluetooth devices."
+          );
+        } else {
+          // For Android versions below 12 (API level 31)
+          locationPermission = await this.requestLocationPermission();
+          storagePermission = await this.requestStoragePermission();
+        }
       }
+    } catch (error) {
+      console.error("Error checking permissions:", error);
+      // Handle the error gracefully, e.g., show a message to the user
+      // You can also log it for debugging
     }
-  
+
     return {
       locationPermission,
       bluetoothScanPermission,
@@ -181,64 +197,73 @@ export default class brustMode extends Component {
       storagePermission,
     };
   }
-  
+
   async requestBluetoothPermission(permission, title, message) {
-    const result = await PermissionsAndroid.request(permission, {
-      title,
-      message,
-      buttonNeutral: "Ask Me Later",
-      buttonNegative: "Cancel",
-      buttonPositive: "OK",
-    });
-    return result === PermissionsAndroid.RESULTS.GRANTED ? "granted" : "denied";
+    try {
+      const result = await PermissionsAndroid.request(permission, {
+        title,
+        message,
+        buttonNeutral: "Ask Me Later",
+        buttonNegative: "Cancel",
+        buttonPositive: "OK",
+      });
+      return result === PermissionsAndroid.RESULTS.GRANTED ? "granted" : "denied";
+    } catch (error) {
+      console.error("Error requesting Bluetooth permission:", error);
+      return "denied"; // Return denied if there's an error
+    }
   }
-  
+
   async requestLocationPermission() {
-    const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-    if (hasPermission) {
-      return "granted";
-    }
-  
-    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
-    if (result === PermissionsAndroid.RESULTS.GRANTED) {
-      return "granted";
-    } else {
-      // Handle denial
-      Toast.show("Location permission denied. Please allow it for full functionality.");
-      return "denied";
+    try {
+      const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION);
+      if (hasPermission) {
+        return "granted";
+      } else {
+        return await this.requestBluetoothPermission(
+          PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION,
+          "Location Permission",
+          "This app needs access to your location."
+        );
+      }
+    } catch (error) {
+      console.error("Error checking location permission:", error);
+      return "denied"; // Return denied if there's an error
     }
   }
-  
+
   async requestStoragePermission() {
-    const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
-    if (hasPermission) {
-      return "granted";
-    }
-  
-    const result = await PermissionsAndroid.request(PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE);
-    if (result === PermissionsAndroid.RESULTS.GRANTED) {
-      return "granted";
-    } else {
-      // Handle denial
-      Toast.show("Storage permission denied. Please allow it for full functionality.");
-      return "denied";
+    try {
+      const hasPermission = await PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE);
+      if (hasPermission) {
+        return "granted";
+      } else {
+        return await this.requestBluetoothPermission(
+          PermissionsAndroid.PERMISSIONS.READ_EXTERNAL_STORAGE,
+          "Storage Permission",
+          "This app needs access to your storage."
+        );
+      }
+    } catch (error) {
+      console.error("Error checking storage permission:", error);
+      return "denied"; // Return denied if there's an error
     }
   }
-  
+
   // async checkPermissions() {
   //   return new Promise(async (resolve, reject) => {
   //     let locationPermission = "denied";
   //     let storagePermission = "denied";
   //     let bluetoothScanPermission = "denied";
   //     let bluetoothConnectPermission = "denied";
-  
+
   //     if (Platform.OS === "android" && Platform.Version >= 23) {
   //       // Android 12+ (API level 31 and above) - Auto grant location and storage permissions
   //       if (Platform.Version >= 31) {
   //         // Automatically grant location and storage permissions for Android 12+
   //         locationPermission = "granted";
   //         storagePermission = "granted";
-  
+
   //         // Request Bluetooth Scan and Connect Permissions on Android 12+
   //         const bluetoothScanRequestResult = await PermissionsAndroid.request(
   //           PermissionsAndroid.PERMISSIONS.BLUETOOTH_SCAN,
@@ -250,7 +275,7 @@ export default class brustMode extends Component {
   //             buttonPositive: "OK",
   //           }
   //         );
-  
+
   //         if (bluetoothScanRequestResult === PermissionsAndroid.RESULTS.GRANTED) {
   //           bluetoothScanPermission = "granted";
   //         } else if (bluetoothScanRequestResult === PermissionsAndroid.RESULTS.DENIED) {
@@ -258,7 +283,7 @@ export default class brustMode extends Component {
   //         } else {
   //           bluetoothScanPermission = "never_ask_again";
   //         }
-  
+
   //         const bluetoothConnectRequestResult = await PermissionsAndroid.request(
   //           PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
   //           {
@@ -269,7 +294,7 @@ export default class brustMode extends Component {
   //             buttonPositive: "OK",
   //           }
   //         );
-  
+
   //         if (bluetoothConnectRequestResult === PermissionsAndroid.RESULTS.GRANTED) {
   //           bluetoothConnectPermission = "granted";
   //         } else if (bluetoothConnectRequestResult === PermissionsAndroid.RESULTS.DENIED) {
@@ -279,7 +304,7 @@ export default class brustMode extends Component {
   //         }
   //       } else {
   //         // For Android versions below 12 (API level 31), request location and storage permissions
-  
+
   //         // Location Permission
   //         await PermissionsAndroid.check(
   //           PermissionsAndroid.PERMISSIONS.ACCESS_FINE_LOCATION
@@ -317,7 +342,7 @@ export default class brustMode extends Component {
   //             });
   //           }
   //         });
-  
+
   //         // Storage Permission
   //         await PermissionsAndroid.check(
   //           PermissionsAndroid.PERMISSIONS.WRITE_EXTERNAL_STORAGE
@@ -357,7 +382,7 @@ export default class brustMode extends Component {
   //         });
   //       }
   //     }
-  
+
   //     resolve({
   //       locationPermission,
   //       bluetoothScanPermission,
@@ -367,31 +392,31 @@ export default class brustMode extends Component {
   //   });
   // }
   async connectAndWriteData(nearestDeviceId, callback) {
-   // console.log('Scanning for devices...');
+    // console.log('Scanning for devices...');
     try {
       // Start BLE scanning for nearby devices
       console.log('Scanning for devices...');
       BleManager.start({ showAlert: false });
-  
+
       // Connect to the nearest device
       console.log(`Connecting to device: ${nearestDeviceId.id}`);
       await BleManager.connect(nearestDeviceId.id);
-  
+
       // Wait for connection to complete
       await BleManager.retrieveServices(nearestDeviceId.id);
       console.log('Connected and services retrieved.');
-  
+
       // Convert the shipModeCommand to a buffer for writing to the device
       const dataToWrite = Buffer.from(shipModeCommand);
-  
+
       // Write data to the characteristic
       await BleManager.write(nearestDeviceId.id, serviceUUID, characteristicUUID, dataToWrite.toJSON().data);
       console.log('Data written successfully:', shipModeCommand);
-      
+
       // Optionally disconnect the device after writing
       await BleManager.disconnect(nearestDeviceId.id);
       console.log('Disconnected from device.');
-      
+
       // Invoke the callback with success
       if (callback) {
         callback(null, 'Data written successfully');
@@ -505,9 +530,9 @@ export default class brustMode extends Component {
         );
         console.log(
           "Removing deivce: " +
-            deviceId +
-            " from list at index: " +
-            thisClass.getIndexOfDevice(deviceId)
+          deviceId +
+          " from list at index: " +
+          thisClass.getIndexOfDevice(deviceId)
         );
         thisClass.state.csvFileLog.splice(
           thisClass.getIndexOfDevice(deviceId),
@@ -546,7 +571,7 @@ export default class brustMode extends Component {
           var currentDirectory = "Beetle_LOGS";
           let absolutePath = "";
           absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
-          console.log("------>>>>>>1",absolutePath);
+          console.log("------>>>>>>1", absolutePath);
           if (RNFS.exists(absolutePath)) {
             console.log(" ---->>> Reading folder");
             RNFS.readDir(absolutePath)
@@ -719,9 +744,9 @@ export default class brustMode extends Component {
             await AsyncStorage.removeItem("scannedMacAddress");
 
             console.log("CHECK HEREEEEE");
-            
+
             this.startProcess();
-           
+
           } else if (macAddress == null) {
             NetInfo.fetch().then((state) => {
               console.log(state);
@@ -734,7 +759,7 @@ export default class brustMode extends Component {
                 var currentDirectory = "Beetle_LOGS";
                 let absolutePath = "";
                 absolutePath = `${RNFS.DocumentDirectoryPath}/${currentDirectory}`;
-                console.log("------>>>>>>2",absolutePath);
+                console.log("------>>>>>>2", absolutePath);
                 if (RNFS.exists(absolutePath)) {
                   console.log("Reading folder");
                   RNFS.readDir(absolutePath)
@@ -779,7 +804,7 @@ export default class brustMode extends Component {
             "this.state.scannedMacAddress",
             this.state.scannedMacAddress
           );
-          console.log("---->>>>",this.state.firmwarefilepath);
+          console.log("---->>>>", this.state.firmwarefilepath);
 
           await this.sleep(500);
 
@@ -792,9 +817,9 @@ export default class brustMode extends Component {
               });
               console.log(
                 "locationPermission: " +
-                  permissions.locationPermission +
-                  " storagePermission: " +
-                  permissions.storagePermission
+                permissions.locationPermission +
+                " storagePermission: " +
+                permissions.storagePermission
               );
               if (
                 permissions.locationPermission == "granted" &&
@@ -803,7 +828,7 @@ export default class brustMode extends Component {
                 await Controller.getInstance()
                   .checkLocationNbluetooth()
                   .then(async (status) => {
-                    console.log("------check----->>>",status);
+                    console.log("------check----->>>", status);
 
                     if (
                       status.bluetoothStatus == "enabled" &&
@@ -900,7 +925,7 @@ export default class brustMode extends Component {
         }
         var totalPerent = Math.round(
           ((this.state.currentDevice - 1) / this.state.totalDevices) * 100 +
-            (1 / this.state.totalDevices) * percent
+          (1 / this.state.totalDevices) * percent
         );
         // this.setState({ totalProgress: totalPerent });
         // }
@@ -981,8 +1006,8 @@ export default class brustMode extends Component {
                 deviceId: peripheral.id,
                 packageFile:
                   this.state.firmwarefilepath["firmware"].split("/")[
-                    this.state.firmwarefilepath["firmware"].split("/").length -
-                      1
+                  this.state.firmwarefilepath["firmware"].split("/").length -
+                  1
                   ],
                 macAddress: null,
                 firmwareVersion: null,
@@ -1210,19 +1235,19 @@ export default class brustMode extends Component {
         console.log("Performing Dfu");
         var file =
           this.state.firmwarefilepath[
-            Object.keys(this.state.firmwarefilepath)[a]
+          Object.keys(this.state.firmwarefilepath)[a]
           ];
         console.log(
           console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState)
         );
-        console.log("FIRMWAREFILEPATH: ---->>." + file,"--->>>", Object.keys(this.state.firmwarefilepath)[a]);
+        console.log("FIRMWAREFILEPATH: ---->>." + file, "--->>>", Object.keys(this.state.firmwarefilepath)[a]);
         console.log("FIRMWAREFILEPATH: ---->>." + this.state.firmwarefilepath);
         var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v3_1.zip");
         var bootloaderFliePath = await MNSIT.getFilePath(
           "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
         );
-       // FIRMWAREFILEPATH: ---->>./data/user/0/com.battle/cache/PALARUM_v2_1.zip --->>> firmware
-       //file:/storage/emulated/0/Android/data/com.battle/files/PALARUM_v2_1.zip
+        // FIRMWAREFILEPATH: ---->>./data/user/0/com.battle/cache/PALARUM_v2_1.zip --->>> firmware
+        //file:/storage/emulated/0/Android/data/com.battle/files/PALARUM_v2_1.zip
         await NordicDFU.startDFU({
           deviceAddress: peripheral.id,
           //   deviceName: peripheral.name,
@@ -1339,7 +1364,7 @@ export default class brustMode extends Component {
       });
 
       console.log("line 1255 is dfu completed ----<<<<<")
-      await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
+      await this.connectAndWriteData(this.state.closestDevice[0], (error, successMessage) => {
         if (error) {
           this.state.logs.push({
             time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
@@ -1357,7 +1382,7 @@ export default class brustMode extends Component {
           this.setState({ closestDevice: [] });
           console.log(successMessage);
         }
-       } );
+      });
     } else {
       var index = this.getIndexOfDevice(
         this.state.devicesList[this.state.currentDevice - 1].id
@@ -1436,7 +1461,7 @@ export default class brustMode extends Component {
         console.log("Performing Dfu");
         var file =
           this.state.firmwarefilepath[
-            Object.keys(this.state.firmwarefilepath)[a]
+          Object.keys(this.state.firmwarefilepath)[a]
           ];
         console.log(
           console.log("DFU STATE IN PERFROM DFU: " + this.state.dfuState)
@@ -1448,7 +1473,7 @@ export default class brustMode extends Component {
           filePath: file,
           //   alternativeAdvertisingNameEnabled: Platform.OS == 'ios' ? false:null
         })
-        ///hello
+          ///hello
           .then(async (res) => {
             isSuccess = true;
             response = res;
@@ -1652,9 +1677,9 @@ export default class brustMode extends Component {
 
         console.log(
           " NEAREST DEVICE -> " +
-            this.state.closestDevice[0].id +
-            " -- " +
-            this.state.closestDevice[0].rssi
+          this.state.closestDevice[0].id +
+          " -- " +
+          this.state.closestDevice[0].rssi
         );
       }
     }
@@ -1738,28 +1763,59 @@ export default class brustMode extends Component {
   }
 
   async startManualScan() {
-    bleManagerEmitter.removeAllListeners("BleManagerDiscoverPeripheral");
-    await this.sleep(250);
-    this.peripheralsListener = bleManagerEmitter.addListener(
-      "BleManagerDiscoverPeripheral",
-      this.handleManualDiscoverPeripheralForSuggestions.bind(this)
-    );
-    this.stopScanListener = bleManagerEmitter.addListener(
-      "BleManagerStopScan",
-      this.handleStopScan.bind(this)
-    );
-    await this.sleep(250);
-    BleManager.scan([], 30, false)
-      .then(() => {
-        // Success code
+    if (Platform.OS == "android") {
+      this.checkPermissions().then(async (permissions) => {
+        // Controller.getInstance().checkPermissions().then(async(permissions) =>{
+        this.setState({
+          locationPermission: permissions.locationPermission,
+          storagePermission: permissions.storagePermission,
+        });
+        console.log(
+          "locationPermission: " +
+          permissions.locationPermission +
+          " storagePermission: " +
+          permissions.storagePermission
+        );
+        if (
+          permissions.locationPermission == "granted" &&
+          permissions.storagePermission == "granted"
+        ) {
+          this.setState({
+            showSearchingDialog: true,
+            isDeviceFoundAfterBootloader: false,
+            // closestDevice: [],
+          });
+          console.log("all permission granted----->>>>")
+          bleManagerEmitter.removeAllListeners("BleManagerDiscoverPeripheral");
+          await this.sleep(250);
+          this.peripheralsListener = bleManagerEmitter.addListener(
+            "BleManagerDiscoverPeripheral",
+            this.handleManualDiscoverPeripheralForSuggestions.bind(this)
+          );
+          this.stopScanListener = bleManagerEmitter.addListener(
+            "BleManagerStopScan",
+            this.handleStopScan.bind(this)
+          );
+          await this.sleep(250);
+          BleManager.scan([], 30, false)
+            .then(() => {
+              // Success code
 
-        console.log("Local Scan started");
-        this.setState({ isScanning: true, deviceSuggesionScan: true });
-      })
-      .catch((err) => {
-        console.log(err);
-        this.setState({ isScanning: false });
+              console.log("Local Scan started");
+              this.setState({ isScanning: true, deviceSuggesionScan: true });
+            })
+            .catch((err) => {
+              console.log(err);
+              this.setState({ isScanning: false });
+            });
+        }
+        else {
+          this.state.checkPermissions();
+          console.log("some permission not  granted----->>>>")
+        }
       });
+    }
+
   }
 
   async stopScan() {
@@ -1799,8 +1855,8 @@ export default class brustMode extends Component {
     var bootloaderFliePath = await MNSIT.getFilePath(
       "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
     );
-console.log("file path ---->>>2000" , firmwareFilePath)
-console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
+    console.log("file path ---->>>2000", firmwareFilePath)
+    console.log("bootloader file path ---->>>2000", bootloaderFliePath)
 
 
 
@@ -1808,15 +1864,15 @@ console.log("bootloader file path ---->>>2000" , bootloaderFliePath)
       const destination = RNFS.CachesDirectoryPath + "/" + "PALARUM_v3_1.zip";
       await RNFS.copyFile(firmwareFilePath, destination);
       console.log("Firmware file copied to: ", destination);
-    
+
       const bootloaderDestination = RNFS.CachesDirectoryPath + "/" + "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip";
       await RNFS.copyFile(bootloaderFliePath, bootloaderDestination);
       console.log("Bootloader file copied to: ", bootloaderDestination);
       const firmwareExists = await RNFS.exists(destination);
-console.log("Firmware exists: ", firmwareExists);
+      console.log("Firmware exists: ", firmwareExists);
 
-const bootloaderExists = await RNFS.exists(bootloaderDestination);
-console.log("Bootloader exists: ", bootloaderExists);
+      const bootloaderExists = await RNFS.exists(bootloaderDestination);
+      console.log("Bootloader exists: ", bootloaderExists);
 
       //  Controller.getInstance().checkPermissions().then(async (permissions) =>{
       this.checkPermissions().then(async (permissions) => {
@@ -1826,9 +1882,9 @@ console.log("Bootloader exists: ", bootloaderExists);
         });
         console.log(
           "locationPermission: " +
-            permissions.locationPermission +
-            " storagePermission: " +
-            permissions.storagePermission
+          permissions.locationPermission +
+          " storagePermission: " +
+          permissions.storagePermission
         );
         if (
           permissions.locationPermission == "granted" &&
@@ -1869,8 +1925,8 @@ console.log("Bootloader exists: ", bootloaderExists);
                 if (this.state.isScanning) {
                   this.stopScan();
                 }
-               
-                
+
+
                 console.log("SCANNING HAS BEEN STARTED");
                 Controller.getInstance().scanDevices();
                 this.setState({
@@ -2284,8 +2340,8 @@ console.log("Bootloader exists: ", bootloaderExists);
                 type: "success",
               });
               console.log("line 2170 dfu versio is already uptodate ----<<<")
-             
-              
+
+
               // this.state.logs.push({
               //   time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
               //   message: "Version is already upto date 111",
@@ -2296,8 +2352,8 @@ console.log("Bootloader exists: ", bootloaderExists);
               console.log('Closest device:', this.state.closestDevice[0].id);
 
               // await this.uploadLogFile();
-           
-             await this.connectAndWriteData(this.state.closestDevice[0],(error,successMessage) => {
+
+              await this.connectAndWriteData(this.state.closestDevice[0], (error, successMessage) => {
                 if (error) {
                   this.state.logs.push({
                     time: moment().format("DD/MM/YYYY HH:mm:ss.SSS"),
@@ -2315,10 +2371,10 @@ console.log("Bootloader exists: ", bootloaderExists);
                   this.setState({ closestDevice: [] });
                   console.log(successMessage);
                 }
-               } );
-              
-                
-              
+              });
+
+
+
               this.setState({
                 totalDevices: 0,
                 currentDevice: 0,
@@ -2571,8 +2627,8 @@ console.log("Bootloader exists: ", bootloaderExists);
         item.type == "info"
           ? { timeColor: "#4d4d4d", messageColor: "#000000" }
           : item.type == "error"
-          ? { timeColor: "#dd5c63", messageColor: "#ce1620" }
-          : { timeColor: "#5eaa4f", messageColor: "#8ec484" };
+            ? { timeColor: "#dd5c63", messageColor: "#ce1620" }
+            : { timeColor: "#5eaa4f", messageColor: "#8ec484" };
       return (
         <View
           key={this.childKey}
@@ -2651,11 +2707,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                   //this.setState({ scannedMacAddress: "" });
                   //this.props.navigation.navigate("qrScan");
 
-                  this.setState({
-                    showSearchingDialog: true,
-                    isDeviceFoundAfterBootloader: false,
-                   // closestDevice: [],
-                  });
+
 
                   this.startManualScan();
                 }}
@@ -2699,11 +2751,11 @@ console.log("Bootloader exists: ", bootloaderExists);
             width: "100%",
             marginVertical: verticalScale(10),
             fontSize: scale(15),
-            color:'black',
-            fontWeight:'bold'
+            color: 'black',
+            fontWeight: 'bold'
           }}
         >
-          Version: 1.0.7
+          Version: 1.1.2
         </Text>
 
         {/* {this.state.showFilesUpLoadingDialog ? (
@@ -2738,20 +2790,20 @@ console.log("Bootloader exists: ", bootloaderExists);
             contentStyle={
               Platform.OS == "android"
                 ? {
-                    borderRadius: 10,
-                    justifyContent: "center",
-                    alignItems: "center",
-                    backgroundColor: "white",
-                  }
+                  borderRadius: 10,
+                  justifyContent: "center",
+                  alignItems: "center",
+                  backgroundColor: "white",
+                }
                 : this.state.autoDFUStatus == "Performing Dfu"
-                ? {
+                  ? {
                     borderRadius: 10,
                     width: "90%",
                     justifyContent: "center",
                     alignItems: "center",
                     backgroundColor: "white",
                   }
-                : {
+                  : {
                     borderRadius: 10,
                     justifyContent: "center",
                     alignItems: "center",
@@ -2875,35 +2927,35 @@ console.log("Bootloader exists: ", bootloaderExists);
                   <View
                     style={{ justifyContent: "center", alignItems: "center" }}
                   >
-                    <Text style={{ fontSize: scale(15),color:'black' }}>
+                    <Text style={{ fontSize: scale(15), color: 'black',width:200,textAlign:'center'}}>
                       Scanning for devices
                     </Text>
-                    <Text style={{ fontSize: scale(15),color:'black' }}>
+                    <Text style={{ fontSize: scale(15), color: 'black',width:200,textAlign:'center'}}>
                       {"Devices Found: " + this.state.devicesList.length}
                     </Text>
                   </View>
                 ) : null}
 
                 {this.state.autoDFUStatus === "Filtering" ||
-                this.state.autoDFUStatus === "Fetching Device Information" ? (
+                  this.state.autoDFUStatus === "Fetching Device Information" ? (
                   <View
                     style={{ justifyContent: "center", alignItems: "center" }}
                   >
-                    <Text style={{ fontSize: scale(15) , color:'black'}}>
+                    <Text style={{ fontSize: scale(15), color: 'black',width:200,textAlign:'center' }}>
                       {this.state.autoDFUStatus === "Filtering"
                         ? "Filtering Device"
                         : "Fetching Device Information"}
                     </Text>
-                    <Text style={{ fontSize: scale(15),color:'black' }}>
+                    <Text style={{ fontSize: scale(15), color: 'black' ,width:200,textAlign:'center'}}>
                       {this.state.autoDFUStatus === "Filtering"
                         ? "Filtering Device: " +
-                          this.state.currentDevice +
-                          "/" +
-                          this.state.totalDevices
+                        this.state.currentDevice +
+                        "/" +
+                        this.state.totalDevices
                         : "Device: " +
-                          this.state.currentDevice +
-                          "/" +
-                          this.state.totalDevices}
+                        this.state.currentDevice +
+                        "/" +
+                        this.state.totalDevices}
                     </Text>
                   </View>
                 ) : null}
@@ -2919,7 +2971,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                         marginRight: Platform.OS == "ios" ? scale(10) : null,
                       }}
                     >
-                      <Text style={{ fontSize: scale(15),color:'black' }}>
+                      <Text style={{ fontSize: scale(15), color: 'black' }}>
                         {"Device: " +
                           this.state.currentDevice +
                           "/" +
@@ -2943,7 +2995,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15) ,color:'black'}}>
+                        <Text style={{ fontSize: scale(15), color: 'black' }}>
                           {"DFU State: "}
                         </Text>
                       </View>
@@ -2955,7 +3007,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15),color:'black' }}>
+                        <Text style={{ fontSize: scale(15), color: 'black' }}>
                           {this.state.dfuState}
                         </Text>
                       </View>
@@ -2978,7 +3030,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                           justifyContent: "center",
                         }}
                       >
-                        <Text style={{ fontSize: scale(15),color:'black' }}>
+                        <Text style={{ fontSize: scale(15), color: 'black' }}>
                           Dfu Progress:{" "}
                         </Text>
                       </View>
@@ -3083,7 +3135,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                 ) : null}
 
                 {this.state.autoDFUStatus == "Performing Dfu" &&
-                this.state.currentDevice == this.state.devicesList.length ? (
+                  this.state.currentDevice == this.state.devicesList.length ? (
                   <View
                     style={{
                       alignSelf: "baseline",
@@ -3123,7 +3175,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                         this.state.dfuState == "Not Started" &&
                         this.state.autoDFUStatus != "Filtering" &&
                         this.state.autoDFUStatus !=
-                          "Fetching Device Information"
+                        "Fetching Device Information"
                       ) {
                         this.setState({
                           isProcessCompleted: true,
@@ -3210,7 +3262,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                       marginTop: verticalScale(10),
                     }}
                   >
-                    <Text style={{ fontSize: scale(15) , color:'black' }}>
+                    <Text style={{ fontSize: scale(15), color: 'black' }}>
                       Please Wait, aborting
                     </Text>
                     <ActivityIndicator size={"large"}></ActivityIndicator>
@@ -3325,7 +3377,7 @@ console.log("Bootloader exists: ", bootloaderExists);
 
             <View>
               <View style={{ flexDirection: "row" }}>
-                <Text style={{ fontSize: 18,color:'black',fontWeight:'bold'}}>Searching...</Text>
+                <Text style={{ fontSize: 18, color: 'black', fontWeight: 'bold' }}>Searching...</Text>
                 <View style={{ width: 150 }} />
                 {this.state.isScanning ? (
                   <ActivityIndicator color="red" size="small" />
@@ -3348,7 +3400,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                       color: "black",
                       paddingVertical: 6,
                       paddingHorizontal: 6,
-                      width:50
+                      width: 50
                     }}
                   >
                     close
@@ -3357,7 +3409,7 @@ console.log("Bootloader exists: ", bootloaderExists);
               </View>
               <View style={{ height: 20 }} />
               {this.state.closestDevice.length > 0 &&
-              this.state.closestDevice[0] ? (
+                this.state.closestDevice[0] ? (
                 <View style={{ flexDirection: "row" }}>
                   <View style={{ flex: 1, flexDirection: "column" }}>
                     <Text
@@ -3383,7 +3435,7 @@ console.log("Bootloader exists: ", bootloaderExists);
                       }
                       this.setState({ showSearchingDialog: false });
                       this.startManualProcess(this.state.closestDevice[0]);
-                     // this.setState({ closestDevice: [] });
+                      // this.setState({ closestDevice: [] });
                       // this.performDfu2(this.state.closestDevice[0]);
                     }}
                   >
