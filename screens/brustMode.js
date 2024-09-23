@@ -21,6 +21,7 @@ import { Buffer } from 'buffer';
 import Controller from "../utils/Controller";
 import { EventRegister } from "react-native-event-listeners";
 import { NordicDFU, DFUEmitter } from '@domir/react-native-nordic-dfu';  //react-native-nordic-dfu
+import BluetoothStateManager from 'react-native-bluetooth-state-manager';
 import StatusBar from "../utils/StatusBar";
 import * as Progress from "react-native-progress";
 // import { Dialog } from 'react-native-simple-dialogs';
@@ -1243,9 +1244,7 @@ export default class brustMode extends Component {
         console.log("FIRMWAREFILEPATH: ---->>." + file, "--->>>", Object.keys(this.state.firmwarefilepath)[a]);
         console.log("FIRMWAREFILEPATH: ---->>." + this.state.firmwarefilepath);
         var firmwareFilePath = await MNSIT.getFilePath("PALARUM_v3_1.zip");
-        var bootloaderFliePath = await MNSIT.getFilePath(
-          "EISAI_BOOTLOADER_REV_0_2_1_PKG.zip"
-        );
+       
         // FIRMWAREFILEPATH: ---->>./data/user/0/com.battle/cache/PALARUM_v2_1.zip --->>> firmware
         //file:/storage/emulated/0/Android/data/com.battle/files/PALARUM_v2_1.zip
         await NordicDFU.startDFU({
@@ -2709,7 +2708,32 @@ export default class brustMode extends Component {
 
 
 
-                  this.startManualScan();
+                  BluetoothStateManager.getState().then(async (bluetoothState) => {
+                    if (bluetoothState === 'PoweredOn') {
+                      // Bluetooth is already enabled, start scanning
+                      this.startManualScan();
+                    } else {
+                      // Show dialog asking the user to enable Bluetooth
+                      BleManager.enableBluetooth()
+                        .then(() => {
+                          console.log('User enabled Bluetooth');
+                          // Proceed with scanning after enabling Bluetooth
+                          this.startManualScan();
+                        })
+                        .catch((error) => {
+                          // Handle the case where the user does not enable Bluetooth
+                          Alert.alert(
+                            'Bluetooth Required',
+                            'You need to enable Bluetooth to proceed.',
+                            [{ text: 'OK' }]
+                          );
+                          console.log('User denied Bluetooth enable request:', error);
+                        });
+                    }
+                  }).catch(error => {
+                    console.error('Failed to get Bluetooth state:', error);
+                  });
+                
                 }}
               >
                 <Text style={{ fontWeight: "bold", color: "white" }}>
